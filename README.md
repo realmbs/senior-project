@@ -35,37 +35,37 @@ Object Storage: S3 with lifecycle policies for raw data archival
 Infrastructure as Code: Terraform modules for reproducible deployments
 
 # Tech Stack
-## Backend
+Backend
 * AWS Lambda: Serverless compute (Python 3.11)
 * Amazon DynamoDB: NoSQL database with GSI
 * Amazon S3: Object storage with lifecycle policies
 * AWS Secrets Manager: Secure API key storage
 * Terraform: Infrastructure as Code
 
-## Data Processing
+Data Processing
 * STIX 2.1: Threat intel standardization
 * Python libraries: BOTO3, Requests, pandas, python-whois
 * Containers: Docker for OSINT
 
-## Frontend
+Frontend
 * Svelte.js: Web framework
 * Chart.js: Data visualization
 * D3.js: Threat relationship mapping
 
 # Development Timeline
-## Phase 1: Infrastructure - Weeks 1-3
+Phase 1: Infrastructure - Weeks 1-3
 * Terraform infrastructure modules and components
 * Lambda functions
 * DynamoDB DB Schema design
 * Basic API setup
 
-## Phase 2: Data Processing - Weeks 4-6
+Phase 2: Data Processing - Weeks 4-6
 * Threat intel collectors
 * STIX 2.1 data processing
 * De-duplication
 * OSINT tool integration
 
-## Phase 3: Frontend - Weeks 7-9
+Phase 3: Frontend - Weeks 7-9
 * Svelte.js frontend
 * Search & filter
 * Threat visualization
