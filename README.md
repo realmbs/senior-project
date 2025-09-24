@@ -7,32 +7,32 @@ Security analysts spend ~3 hours daily on manual alert review, processing 4,484 
 # Proposed Solution
 A serverless, cloud-native platform that:
 
-Automates threat intelligence aggregation from multiple OSINT sources
-Reduces manual analyst workload through real-time correlation and enrichment
-Provides cost-effective alternative to enterprise solutions ($100-250 vs $50K+ annually)
-Scales efficiently using AWS serverless architecture with pay-per-use pricing
+* Automates threat intelligence aggregation from multiple OSINT sources
+* Reduces manual analyst workload through real-time correlation and enrichment
+* Provides cost-effective alternative to enterprise solutions ($100-250 vs $50K+ annually)
+* Scales efficiently using AWS serverless architecture with pay-per-use pricing
 
 # Key Features
 Threat Intelligence Collection
 
-Multiple Sources: AT&T Alien Labs OTX, Abuse.ch (MalwareBazaar, URLhaus)
-STIX 2.1 Compliance: Industry-standard threat intelligence format
-Automated De-duplication: Hash-based duplicate detection and removal
-Manual Triggers: Cost-controlled data collection via API Gateway
+* Multiple Sources: AT&T Alien Labs OTX, Abuse.ch (MalwareBazaar, URLhaus)
+* STIX 2.1 Compliance: Industry-standard threat intelligence format
+* Automated De-duplication: Hash-based duplicate detection and removal
+* Manual Triggers: Cost-controlled data collection via API Gateway
 
 OSINT Enrichment
 
-Domain Intelligence: TheHarvester for subdomain discovery
-Network Scanning: Shodan API integration for infrastructure analysis
-Whois Lookup: Domain registration and ownership information
-Containerized Tools: Docker containers for isolated OSINT execution
+* Domain Intelligence: TheHarvester for subdomain discovery
+* Network Scanning: Shodan API integration for infrastructure analysis
+* Whois Lookup: Domain registration and ownership information
+* Containerized Tools: Docker containers for isolated OSINT execution
 
 Cloud-Native Architecture
 
-Serverless Computing: AWS Lambda for cost-effective processing
-NoSQL Storage: DynamoDB with Global Secondary Indexes for fast queries
-Object Storage: S3 with lifecycle policies for raw data archival
-Infrastructure as Code: Terraform modules for reproducible deployments
+* Serverless Computing: AWS Lambda for cost-effective processing
+* NoSQL Storage: DynamoDB with Global Secondary Indexes for fast queries
+* Object Storage: S3 with lifecycle policies for raw data archival
+* Infrastructure as Code: Terraform modules for reproducible deployments
 
 # Tech Stack
 Backend
