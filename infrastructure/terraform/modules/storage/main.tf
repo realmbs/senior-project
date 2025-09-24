@@ -1,2 +1,1 @@
 # s3 bucket => raw threat intelligence data
-
