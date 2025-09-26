@@ -30,3 +30,6 @@ api_keys.txt
 # Node modules
 node_modules/
 dist/
+
+# Claude
+CLAUDE.md
