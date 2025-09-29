@@ -113,6 +113,36 @@ module "compute" {
 }
 
 # =============================================================================
+# Networking Module
+# =============================================================================
+# Creates API Gateway endpoints and CloudFront distribution for frontend
+
+module "networking" {
+  source = "../../modules/networking"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  # Dependencies from compute module
+  lambda_function_names = module.compute.lambda_function_names
+  lambda_invoke_arns    = module.compute.lambda_invoke_arns
+
+  # Dependencies from storage module
+  frontend_bucket_name        = module.storage.frontend_bucket_name
+  frontend_bucket_domain_name = module.storage.frontend_bucket_domain_name
+
+  # API Gateway configuration
+  api_throttle_rate_limit   = var.api_throttle_rate_limit
+  api_throttle_burst_limit  = var.api_throttle_burst_limit
+  api_usage_quota_limit     = var.api_usage_quota_limit
+  cloudfront_price_class    = var.cloudfront_price_class
+
+  # Development environment specific settings
+  enable_cors               = var.enable_cors
+  enable_api_gateway_logging = var.enable_api_gateway_logging
+}
+
+# =============================================================================
 # Local Values for Resource References
 # =============================================================================
 

@@ -197,3 +197,57 @@ variable "abuse_ch_api_key" {
     error_message = "Abuse.ch API key cannot be empty."
   }
 }
+
+# -----------------------------------------------------------------------------
+# API Gateway Configuration
+# -----------------------------------------------------------------------------
+
+variable "api_throttle_rate_limit" {
+  description = "API Gateway steady-state request rate limit (requests per second)"
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.api_throttle_rate_limit > 0 && var.api_throttle_rate_limit <= 10000
+    error_message = "API throttle rate limit must be between 1 and 10000 requests per second."
+  }
+}
+
+variable "api_throttle_burst_limit" {
+  description = "API Gateway burst limit for request spikes"
+  type        = number
+  default     = 200
+
+  validation {
+    condition     = var.api_throttle_burst_limit >= 100
+    error_message = "API throttle burst limit must be at least 100 requests per second."
+  }
+}
+
+variable "api_usage_quota_limit" {
+  description = "Monthly API usage quota (requests per month)"
+  type        = number
+  default     = 10000
+
+  validation {
+    condition     = var.api_usage_quota_limit > 0 && var.api_usage_quota_limit <= 1000000
+    error_message = "API usage quota limit must be between 1 and 1,000,000 requests per month."
+  }
+}
+
+variable "cloudfront_price_class" {
+  description = "CloudFront price class for cost optimization"
+  type        = string
+  default     = "PriceClass_100"
+
+  validation {
+    condition     = contains(["PriceClass_100", "PriceClass_200", "PriceClass_All"], var.cloudfront_price_class)
+    error_message = "CloudFront price class must be one of: PriceClass_100, PriceClass_200, PriceClass_All."
+  }
+}
+
+variable "enable_cors" {
+  description = "Enable CORS (Cross-Origin Resource Sharing) for API Gateway"
+  type        = bool
+  default     = true
+}
