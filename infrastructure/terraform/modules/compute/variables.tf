@@ -50,12 +50,13 @@ variable "api_keys_secret_arn" {
 }
 
 variable "cloudwatch_kms_key_arn" {
-  description = "ARN of KMS key for CloudWatch log encryption"
+  description = "ARN of KMS key for CloudWatch log encryption (optional)"
   type        = string
+  default     = null
 
   validation {
-    condition     = can(regex("^arn:aws:kms:", var.cloudwatch_kms_key_arn))
-    error_message = "CloudWatch KMS key ARN must be a valid AWS KMS key ARN."
+    condition     = var.cloudwatch_kms_key_arn == null || can(regex("^arn:aws:kms:", var.cloudwatch_kms_key_arn))
+    error_message = "CloudWatch KMS key ARN must be a valid AWS KMS key ARN or null."
   }
 }
 

@@ -168,6 +168,7 @@ output "public_access_block_configuration" {
 output "monitoring_configuration" {
   description = "CloudWatch monitoring configuration details"
   value = var.enable_monitoring ? {
+    enabled = true
     storage_cost_alarm = {
       enabled    = true
       threshold_gb = var.storage_cost_threshold_gb
@@ -180,6 +181,16 @@ output "monitoring_configuration" {
     }
   } : {
     enabled = false
+    storage_cost_alarm = {
+      enabled    = false
+      threshold_gb = 0
+      alarm_name = ""
+    }
+    large_upload_metric = {
+      enabled = false
+      metric_name = ""
+      namespace   = ""
+    }
   }
   sensitive = false
 }
