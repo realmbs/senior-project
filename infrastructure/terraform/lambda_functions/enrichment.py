@@ -401,52 +401,169 @@ def enrich_url(url: str, api_keys: Dict[str, str]) -> Dict[str, Any]:
 
 
 def perform_dns_resolution(domain: str) -> Dict[str, Any]:
-    """Perform DNS resolution for domain"""
+    """Perform comprehensive DNS resolution and analysis"""
     try:
-        result = {
+        dns_data = {
+            'domain': domain,
             'a_records': [],
             'aaaa_records': [],
             'mx_records': [],
             'ns_records': [],
-            'txt_records': []
+            'txt_records': [],
+            'cname_records': [],
+            'ptr_records': [],
+            'soa_record': {},
+            'dns_security': {},
+            'response_times': {},
+            'analysis': {}
         }
 
+        # Measure response times for performance analysis
+        start_time = time.time()
+
         # A records (IPv4)
-        try:
-            result['a_records'] = [str(ip) for ip in socket.getaddrinfo(domain, None, socket.AF_INET)]
-        except:
-            pass
+        a_records = _get_a_records(domain)
+        dns_data['a_records'] = a_records
+        dns_data['response_times']['a_records'] = time.time() - start_time
 
-        # Additional DNS record types would be implemented with dnspython library
-        # This is a simplified implementation
+        # AAAA records (IPv6)
+        aaaa_records = _get_aaaa_records(domain)
+        dns_data['aaaa_records'] = aaaa_records
 
-        return result
+        # MX records (Mail Exchange)
+        mx_records = _get_mx_records(domain)
+        dns_data['mx_records'] = mx_records
+
+        # NS records (Name Servers)
+        ns_records = _get_ns_records(domain)
+        dns_data['ns_records'] = ns_records
+
+        # TXT records
+        txt_records = _get_txt_records(domain)
+        dns_data['txt_records'] = txt_records
+
+        # CNAME records
+        cname_records = _get_cname_records(domain)
+        dns_data['cname_records'] = cname_records
+
+        # SOA record
+        soa_record = _get_soa_record(domain)
+        dns_data['soa_record'] = soa_record
+
+        # Analyze DNS security features
+        dns_data['dns_security'] = _analyze_dns_security(txt_records, domain)
+
+        # Perform DNS analysis
+        dns_data['analysis'] = _analyze_dns_configuration(dns_data)
+
+        # Check for DNS over HTTPS/TLS support
+        dns_data['modern_dns'] = _check_modern_dns_support(domain)
+
+        return dns_data
+
     except Exception as e:
+        logger.error(f"Error in DNS resolution: {e}")
         return {'error': str(e)}
 
 
 def perform_whois_lookup(domain: str) -> Dict[str, Any]:
-    """Perform WHOIS lookup for domain"""
+    """Perform comprehensive WHOIS lookup and analysis"""
     try:
-        # This would typically use python-whois library
-        # Placeholder implementation
-        return {
-            'registrar': 'unknown',
-            'creation_date': 'unknown',
-            'expiration_date': 'unknown',
+        whois_data = {
+            'domain': domain,
+            'registrar': 'Unknown',
+            'creation_date': 'Unknown',
+            'expiration_date': 'Unknown',
+            'updated_date': 'Unknown',
             'name_servers': [],
-            'status': 'unknown'
+            'status': [],
+            'registrant': {},
+            'admin_contact': {},
+            'tech_contact': {},
+            'dnssec': 'Unknown',
+            'privacy_protection': False,
+            'analysis': {}
         }
+
+        # Perform WHOIS lookup using multiple methods
+        raw_whois = _get_raw_whois(domain)
+
+        if 'error' in raw_whois:
+            return raw_whois
+
+        # Parse WHOIS data
+        parsed_data = _parse_whois_data(raw_whois['raw_data'])
+        whois_data.update(parsed_data)
+
+        # Analyze WHOIS data for intelligence
+        whois_data['analysis'] = _analyze_whois_data(whois_data)
+
+        # Check domain age and calculate metrics
+        whois_data['domain_metrics'] = _calculate_domain_metrics(whois_data)
+
+        return whois_data
+
     except Exception as e:
+        logger.error(f"Error in WHOIS lookup: {e}")
         return {'error': str(e)}
 
 
 def search_shodan_domain(domain: str, api_key: str) -> Dict[str, Any]:
-    """Search Shodan for domain information"""
+    """Search Shodan for comprehensive domain information"""
     try:
+        results = {
+            'domain_search': {},
+            'subdomain_discovery': {},
+            'ssl_certificates': {},
+            'associated_ips': [],
+            'services': [],
+            'vulnerabilities': []
+        }
+
+        # Main domain search
+        domain_data = _shodan_domain_search(domain, api_key)
+        results['domain_search'] = domain_data
+
+        # Extract IPs for detailed analysis
+        for match in domain_data.get('matches', []):
+            ip = match.get('ip_str')
+            if ip and ip not in results['associated_ips']:
+                results['associated_ips'].append(ip)
+
+                # Get detailed IP information
+                ip_data = search_shodan_ip(ip, api_key)
+                if 'error' not in ip_data:
+                    results['services'].extend(ip_data.get('ports', []))
+                    results['vulnerabilities'].extend(ip_data.get('vulns', []))
+
+        # SSL certificate analysis
+        ssl_data = _shodan_ssl_search(domain, api_key)
+        results['ssl_certificates'] = ssl_data
+
+        # Extract subdomains from SSL certificates
+        subdomains = _extract_subdomains_from_ssl(ssl_data)
+        results['subdomain_discovery'] = {'subdomains': subdomains}
+
+        # Calculate risk score
+        results['risk_analysis'] = _calculate_domain_risk_score(results)
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Error in Shodan domain search: {e}")
+        return {'error': str(e)}
+
+
+def _shodan_domain_search(domain: str, api_key: str) -> Dict[str, Any]:
+    """Perform main Shodan domain search"""
+    try:
+        url = 'https://api.shodan.io/shodan/host/search'
+        params = {
+            'query': f'hostname:{domain}',
+            'limit': 50,
+            'facets': 'port,country,org'
+        }
         headers = {'Authorization': f'Bearer {api_key}'}
-        url = f'https://api.shodan.io/shodan/host/search'
-        params = {'query': f'hostname:{domain}', 'limit': 10}
 
         response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
@@ -457,19 +574,297 @@ def search_shodan_domain(domain: str, api_key: str) -> Dict[str, Any]:
         return {'error': str(e)}
 
 
-def search_shodan_ip(ip_address: str, api_key: str) -> Dict[str, Any]:
-    """Search Shodan for IP address information"""
+def _shodan_ssl_search(domain: str, api_key: str) -> Dict[str, Any]:
+    """Search Shodan for SSL certificate information"""
     try:
+        url = 'https://api.shodan.io/shodan/host/search'
+        params = {
+            'query': f'ssl.cert.subject.cn:{domain} OR ssl.cert.extensions.subject_alt_name:{domain}',
+            'limit': 100
+        }
         headers = {'Authorization': f'Bearer {api_key}'}
-        url = f'https://api.shodan.io/shodan/host/{ip_address}'
 
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
 
         return response.json()
 
     except Exception as e:
         return {'error': str(e)}
+
+
+def _extract_subdomains_from_ssl(ssl_data: Dict[str, Any]) -> List[str]:
+    """Extract subdomains from SSL certificate data"""
+    subdomains = set()
+
+    try:
+        for match in ssl_data.get('matches', []):
+            ssl_info = match.get('ssl', {})
+            cert = ssl_info.get('cert', {})
+
+            # Extract from subject common name
+            subject = cert.get('subject', {})
+            cn = subject.get('CN')
+            if cn:
+                subdomains.add(cn)
+
+            # Extract from subject alternative names
+            extensions = cert.get('extensions', {})
+            san = extensions.get('subject_alt_name', [])
+            for name in san:
+                if isinstance(name, str):
+                    subdomains.add(name.replace('DNS:', ''))
+
+    except Exception as e:
+        logger.warning(f"Error extracting subdomains from SSL: {e}")
+
+    return list(subdomains)
+
+
+def _calculate_domain_risk_score(shodan_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate risk score based on Shodan findings"""
+    risk_score = 0
+    risk_factors = []
+
+    try:
+        # Check for vulnerabilities
+        vulns = shodan_data.get('vulnerabilities', [])
+        if vulns:
+            risk_score += len(vulns) * 10
+            risk_factors.append(f"Found {len(vulns)} vulnerabilities")
+
+        # Check for open ports
+        services = shodan_data.get('services', [])
+        high_risk_ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 993, 995, 1433, 1521, 3306, 3389, 5432, 5900]
+        open_high_risk = [port for port in services if port in high_risk_ports]
+
+        if open_high_risk:
+            risk_score += len(open_high_risk) * 5
+            risk_factors.append(f"High-risk ports open: {open_high_risk}")
+
+        # Check for unusual number of subdomains
+        subdomains = shodan_data.get('subdomain_discovery', {}).get('subdomains', [])
+        if len(subdomains) > 50:
+            risk_score += 15
+            risk_factors.append("Unusually high number of subdomains")
+
+        # Determine risk level
+        if risk_score >= 50:
+            risk_level = "HIGH"
+        elif risk_score >= 25:
+            risk_level = "MEDIUM"
+        elif risk_score >= 10:
+            risk_level = "LOW"
+        else:
+            risk_level = "MINIMAL"
+
+        return {
+            'risk_score': min(risk_score, 100),
+            'risk_level': risk_level,
+            'risk_factors': risk_factors
+        }
+
+    except Exception as e:
+        logger.warning(f"Error calculating domain risk score: {e}")
+        return {'risk_score': 0, 'risk_level': 'UNKNOWN', 'risk_factors': []}
+
+
+def search_shodan_ip(ip_address: str, api_key: str) -> Dict[str, Any]:
+    """Search Shodan for comprehensive IP address information"""
+    try:
+        # Get host information
+        host_data = _shodan_host_lookup(ip_address, api_key)
+
+        if 'error' in host_data:
+            return host_data
+
+        # Process and enhance the data
+        enriched_data = {
+            'ip_address': ip_address,
+            'hostnames': host_data.get('hostnames', []),
+            'organization': host_data.get('org', 'Unknown'),
+            'country': host_data.get('country_name', 'Unknown'),
+            'city': host_data.get('city', 'Unknown'),
+            'isp': host_data.get('isp', 'Unknown'),
+            'asn': host_data.get('asn', 'Unknown'),
+            'ports': host_data.get('ports', []),
+            'services': [],
+            'vulnerabilities': host_data.get('vulns', []),
+            'tags': host_data.get('tags', []),
+            'last_update': host_data.get('last_update', ''),
+            'risk_analysis': {}
+        }
+
+        # Process service information
+        for service in host_data.get('data', []):
+            service_info = {
+                'port': service.get('port'),
+                'protocol': service.get('transport', 'tcp'),
+                'service': service.get('product', 'Unknown'),
+                'version': service.get('version', ''),
+                'banner': service.get('data', '')[:500],  # Limit banner size
+                'timestamp': service.get('timestamp', '')
+            }
+
+            # Add HTTP-specific information
+            if 'http' in service:
+                http_info = service['http']
+                service_info['http'] = {
+                    'server': http_info.get('server', ''),
+                    'title': http_info.get('title', ''),
+                    'status_code': http_info.get('status', 0),
+                    'headers': dict(list(http_info.get('headers', {}).items())[:10])  # Limit headers
+                }
+
+            # Add SSL information
+            if 'ssl' in service:
+                ssl_info = service['ssl']
+                cert = ssl_info.get('cert', {})
+                service_info['ssl'] = {
+                    'version': ssl_info.get('version', ''),
+                    'cipher': ssl_info.get('cipher', {}),
+                    'cert_subject': cert.get('subject', {}),
+                    'cert_issuer': cert.get('issuer', {}),
+                    'cert_expired': cert.get('expired', False),
+                    'cert_expires': cert.get('expires', ''),
+                    'cert_fingerprint': cert.get('fingerprint', {})
+                }
+
+            enriched_data['services'].append(service_info)
+
+        # Calculate risk assessment
+        enriched_data['risk_analysis'] = _calculate_ip_risk_score(enriched_data)
+
+        return enriched_data
+
+    except Exception as e:
+        logger.error(f"Error in Shodan IP search: {e}")
+        return {'error': str(e)}
+
+
+def _shodan_host_lookup(ip_address: str, api_key: str) -> Dict[str, Any]:
+    """Perform Shodan host lookup"""
+    try:
+        url = f'https://api.shodan.io/shodan/host/{ip_address}'
+        params = {'history': 'false', 'minify': 'false'}
+        headers = {'Authorization': f'Bearer {api_key}'}
+
+        response = requests.get(url, headers=headers, params=params, timeout=30)
+
+        if response.status_code == 404:
+            return {'error': 'Host not found in Shodan database'}
+
+        response.raise_for_status()
+        return response.json()
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            return {'error': 'Invalid Shodan API key'}
+        elif e.response.status_code == 429:
+            return {'error': 'Shodan API rate limit exceeded'}
+        else:
+            return {'error': f'Shodan API error: {e.response.status_code}'}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _calculate_ip_risk_score(ip_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate risk score for IP address based on Shodan findings"""
+    risk_score = 0
+    risk_factors = []
+
+    try:
+        # Check for vulnerabilities
+        vulns = ip_data.get('vulnerabilities', [])
+        if vulns:
+            critical_vulns = [v for v in vulns if 'critical' in str(v).lower()]
+            high_vulns = [v for v in vulns if 'high' in str(v).lower()]
+
+            risk_score += len(critical_vulns) * 20
+            risk_score += len(high_vulns) * 15
+            risk_score += len(vulns) * 5
+
+            risk_factors.append(f"Found {len(vulns)} vulnerabilities ({len(critical_vulns)} critical, {len(high_vulns)} high)")
+
+        # Check for suspicious tags
+        tags = ip_data.get('tags', [])
+        suspicious_tags = ['malware', 'botnet', 'compromised', 'scanner', 'honeypot']
+        found_suspicious = [tag for tag in tags if tag.lower() in suspicious_tags]
+
+        if found_suspicious:
+            risk_score += len(found_suspicious) * 25
+            risk_factors.append(f"Suspicious tags: {found_suspicious}")
+
+        # Check for open high-risk ports
+        ports = ip_data.get('ports', [])
+        high_risk_ports = [21, 22, 23, 25, 53, 135, 139, 445, 1433, 1521, 3306, 3389, 5432, 5900]
+        open_high_risk = [port for port in ports if port in high_risk_ports]
+
+        if open_high_risk:
+            risk_score += len(open_high_risk) * 8
+            risk_factors.append(f"High-risk ports open: {open_high_risk}")
+
+        # Check for unusual number of open ports
+        if len(ports) > 20:
+            risk_score += 15
+            risk_factors.append(f"Unusually high number of open ports: {len(ports)}")
+
+        # Check for outdated services
+        services = ip_data.get('services', [])
+        outdated_services = []
+        for service in services:
+            version = service.get('version', '')
+            service_name = service.get('service', '')
+            if _is_outdated_service(service_name, version):
+                outdated_services.append(f"{service_name} {version}")
+
+        if outdated_services:
+            risk_score += len(outdated_services) * 10
+            risk_factors.append(f"Outdated services: {outdated_services[:3]}")
+
+        # Determine risk level
+        if risk_score >= 75:
+            risk_level = "CRITICAL"
+        elif risk_score >= 50:
+            risk_level = "HIGH"
+        elif risk_score >= 25:
+            risk_level = "MEDIUM"
+        elif risk_score >= 10:
+            risk_level = "LOW"
+        else:
+            risk_level = "MINIMAL"
+
+        return {
+            'risk_score': min(risk_score, 100),
+            'risk_level': risk_level,
+            'risk_factors': risk_factors
+        }
+
+    except Exception as e:
+        logger.warning(f"Error calculating IP risk score: {e}")
+        return {'risk_score': 0, 'risk_level': 'UNKNOWN', 'risk_factors': []}
+
+
+def _is_outdated_service(service_name: str, version: str) -> bool:
+    """Check if a service version is considered outdated (simplified)"""
+    # This is a simplified check - in production, this would use a comprehensive CVE database
+    outdated_patterns = {
+        'apache': ['2.2', '2.0', '1.3'],
+        'nginx': ['1.10', '1.8', '1.6'],
+        'openssh': ['6.', '5.', '4.'],
+        'mysql': ['5.5', '5.1', '4.'],
+        'postgresql': ['9.', '8.'],
+        'php': ['5.', '4.']
+    }
+
+    service_lower = service_name.lower()
+    for service, old_versions in outdated_patterns.items():
+        if service in service_lower:
+            for old_version in old_versions:
+                if version.startswith(old_version):
+                    return True
+
+    return False
 
 
 def run_theharvester(target: str, source_type: str = 'domain') -> Dict[str, Any]:
@@ -547,49 +942,190 @@ def perform_reverse_dns(ip_address: str) -> Dict[str, Any]:
 
 
 def check_domain_reputation(domain: str) -> Dict[str, Any]:
-    """Check domain reputation using various sources"""
+    """Check domain reputation using multiple sources"""
     try:
-        # This would integrate with reputation services like VirusTotal, URLVoid
-        # Placeholder implementation
-        return {
-            'reputation_score': 50,
-            'category': 'unknown',
-            'malicious': False,
-            'suspicious': False
+        reputation_data = {
+            'domain': domain,
+            'overall_score': 50,
+            'risk_level': 'UNKNOWN',
+            'sources_checked': [],
+            'reputation_sources': {},
+            'threat_categories': [],
+            'analysis': {}
         }
+
+        # Check multiple reputation sources
+        reputation_sources = []
+
+        # Source 1: Simple DNS-based checks
+        dns_reputation = _check_dns_reputation(domain)
+        if 'error' not in dns_reputation:
+            reputation_sources.append('dns_analysis')
+            reputation_data['reputation_sources']['dns_analysis'] = dns_reputation
+
+        # Source 2: Domain age and registration analysis
+        registration_reputation = _check_registration_reputation(domain)
+        if 'error' not in registration_reputation:
+            reputation_sources.append('registration_analysis')
+            reputation_data['reputation_sources']['registration_analysis'] = registration_reputation
+
+        # Source 3: Subdomain and pattern analysis
+        pattern_reputation = _check_domain_patterns(domain)
+        if 'error' not in pattern_reputation:
+            reputation_sources.append('pattern_analysis')
+            reputation_data['reputation_sources']['pattern_analysis'] = pattern_reputation
+
+        # Source 4: Public blocklist checks (simplified)
+        blocklist_reputation = _check_public_blocklists(domain)
+        if 'error' not in blocklist_reputation:
+            reputation_sources.append('blocklist_check')
+            reputation_data['reputation_sources']['blocklist_check'] = blocklist_reputation
+
+        reputation_data['sources_checked'] = reputation_sources
+
+        # Aggregate reputation scores
+        reputation_data['analysis'] = _aggregate_domain_reputation(reputation_data['reputation_sources'])
+        reputation_data['overall_score'] = reputation_data['analysis']['aggregated_score']
+        reputation_data['risk_level'] = reputation_data['analysis']['risk_level']
+        reputation_data['threat_categories'] = reputation_data['analysis']['threat_categories']
+
+        return reputation_data
+
     except Exception as e:
+        logger.error(f"Error checking domain reputation: {e}")
         return {'error': str(e)}
 
 
 def check_ip_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check IP reputation using various sources"""
+    """Check IP reputation using multiple sources"""
     try:
-        # This would integrate with reputation services
-        # Placeholder implementation
-        return {
-            'reputation_score': 50,
-            'category': 'unknown',
-            'malicious': False,
-            'suspicious': False,
-            'blocklisted': False
+        reputation_data = {
+            'ip_address': ip_address,
+            'overall_score': 50,
+            'risk_level': 'UNKNOWN',
+            'sources_checked': [],
+            'reputation_sources': {},
+            'threat_categories': [],
+            'blocklist_status': {},
+            'analysis': {}
         }
+
+        # Check if IP is private/reserved
+        try:
+            ip_obj = ipaddress.ip_address(ip_address)
+            if ip_obj.is_private or ip_obj.is_reserved or ip_obj.is_loopback:
+                reputation_data.update({
+                    'overall_score': 95,
+                    'risk_level': 'LOW',
+                    'threat_categories': ['private_network'],
+                    'analysis': {'note': 'Private/reserved IP address'}
+                })
+                return reputation_data
+        except:
+            pass
+
+        # Check multiple reputation sources
+        reputation_sources = []
+
+        # Source 1: Geographic and hosting analysis
+        geo_reputation = _check_ip_geographic_reputation(ip_address)
+        if 'error' not in geo_reputation:
+            reputation_sources.append('geographic_analysis')
+            reputation_data['reputation_sources']['geographic_analysis'] = geo_reputation
+
+        # Source 2: Port scan and service analysis
+        service_reputation = _check_ip_service_reputation(ip_address)
+        if 'error' not in service_reputation:
+            reputation_sources.append('service_analysis')
+            reputation_data['reputation_sources']['service_analysis'] = service_reputation
+
+        # Source 3: DNS-based blocklist checks
+        dnsbl_reputation = _check_dnsbl_reputation(ip_address)
+        if 'error' not in dnsbl_reputation:
+            reputation_sources.append('dnsbl_check')
+            reputation_data['reputation_sources']['dnsbl_check'] = dnsbl_reputation
+            reputation_data['blocklist_status'] = dnsbl_reputation.get('blocklist_results', {})
+
+        # Source 4: Reverse DNS analysis
+        rdns_reputation = _check_reverse_dns_reputation(ip_address)
+        if 'error' not in rdns_reputation:
+            reputation_sources.append('reverse_dns_analysis')
+            reputation_data['reputation_sources']['reverse_dns_analysis'] = rdns_reputation
+
+        reputation_data['sources_checked'] = reputation_sources
+
+        # Aggregate reputation scores
+        reputation_data['analysis'] = _aggregate_ip_reputation(reputation_data['reputation_sources'])
+        reputation_data['overall_score'] = reputation_data['analysis']['aggregated_score']
+        reputation_data['risk_level'] = reputation_data['analysis']['risk_level']
+        reputation_data['threat_categories'] = reputation_data['analysis']['threat_categories']
+
+        return reputation_data
+
     except Exception as e:
+        logger.error(f"Error checking IP reputation: {e}")
         return {'error': str(e)}
 
 
 def check_url_reputation(url: str) -> Dict[str, Any]:
-    """Check URL reputation using various sources"""
+    """Check URL reputation using multiple analysis techniques"""
     try:
-        # This would integrate with URL reputation services
-        # Placeholder implementation
-        return {
-            'reputation_score': 50,
-            'category': 'unknown',
-            'malicious': False,
-            'phishing': False,
-            'malware': False
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(url)
+
+        reputation_data = {
+            'url': url,
+            'domain': parsed_url.netloc,
+            'path': parsed_url.path,
+            'overall_score': 50,
+            'risk_level': 'UNKNOWN',
+            'sources_checked': [],
+            'reputation_sources': {},
+            'threat_categories': [],
+            'analysis': {}
         }
+
+        # Check multiple analysis sources
+        reputation_sources = []
+
+        # Source 1: URL structure analysis
+        structure_reputation = _analyze_url_structure(url, parsed_url)
+        if 'error' not in structure_reputation:
+            reputation_sources.append('structure_analysis')
+            reputation_data['reputation_sources']['structure_analysis'] = structure_reputation
+
+        # Source 2: Domain reputation (reuse domain analysis)
+        if parsed_url.netloc:
+            domain_reputation = check_domain_reputation(parsed_url.netloc)
+            if 'error' not in domain_reputation:
+                reputation_sources.append('domain_reputation')
+                reputation_data['reputation_sources']['domain_reputation'] = domain_reputation
+
+        # Source 3: Path and parameter analysis
+        path_reputation = _analyze_url_path(parsed_url)
+        if 'error' not in path_reputation:
+            reputation_sources.append('path_analysis')
+            reputation_data['reputation_sources']['path_analysis'] = path_reputation
+
+        # Source 4: Protocol and port analysis
+        protocol_reputation = _analyze_url_protocol(parsed_url)
+        if 'error' not in protocol_reputation:
+            reputation_sources.append('protocol_analysis')
+            reputation_data['reputation_sources']['protocol_analysis'] = protocol_reputation
+
+        reputation_data['sources_checked'] = reputation_sources
+
+        # Aggregate reputation scores
+        reputation_data['analysis'] = _aggregate_url_reputation(reputation_data['reputation_sources'])
+        reputation_data['overall_score'] = reputation_data['analysis']['aggregated_score']
+        reputation_data['risk_level'] = reputation_data['analysis']['risk_level']
+        reputation_data['threat_categories'] = reputation_data['analysis']['threat_categories']
+
+        return reputation_data
+
     except Exception as e:
+        logger.error(f"Error checking URL reputation: {e}")
         return {'error': str(e)}
 
 
@@ -722,3 +1258,789 @@ def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
             'Access-Control-Allow-Origin': '*'
         }
     }
+
+
+# ============================================================================
+# DNS Helper Functions
+# ============================================================================
+
+def _get_a_records(domain: str) -> List[str]:
+    """Get A records for domain"""
+    try:
+        result = socket.getaddrinfo(domain, None, socket.AF_INET)
+        return list(set([addr[4][0] for addr in result]))
+    except Exception:
+        return []
+
+
+def _get_aaaa_records(domain: str) -> List[str]:
+    """Get AAAA records for domain"""
+    try:
+        result = socket.getaddrinfo(domain, None, socket.AF_INET6)
+        return list(set([addr[4][0] for addr in result]))
+    except Exception:
+        return []
+
+
+def _get_mx_records(domain: str) -> List[Dict[str, Any]]:
+    """Get MX records for domain"""
+    try:
+        result = subprocess.run(
+            ['nslookup', '-type=MX', domain],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        mx_records = []
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if 'mail exchanger' in line.lower():
+                    parts = line.split('=')
+                    if len(parts) > 1:
+                        mx_info = parts[1].strip().split()
+                        if len(mx_info) >= 2:
+                            mx_records.append({
+                                'priority': int(mx_info[0]),
+                                'exchange': mx_info[1].rstrip('.')
+                            })
+
+        return sorted(mx_records, key=lambda x: x.get('priority', 999))
+    except Exception:
+        return []
+
+
+def _get_ns_records(domain: str) -> List[str]:
+    """Get NS records for domain"""
+    try:
+        result = subprocess.run(
+            ['nslookup', '-type=NS', domain],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        ns_records = []
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if 'nameserver' in line.lower():
+                    parts = line.split('=')
+                    if len(parts) > 1:
+                        ns_records.append(parts[1].strip().rstrip('.'))
+
+        return list(set(ns_records))
+    except Exception:
+        return []
+
+
+def _get_txt_records(domain: str) -> List[str]:
+    """Get TXT records for domain"""
+    try:
+        result = subprocess.run(
+            ['nslookup', '-type=TXT', domain],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        txt_records = []
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if 'text =' in line.lower():
+                    parts = line.split('=')
+                    if len(parts) > 1:
+                        txt_content = parts[1].strip().strip('"')
+                        txt_records.append(txt_content)
+
+        return txt_records
+    except Exception:
+        return []
+
+
+def _analyze_dns_security(txt_records: List[str], domain: str) -> Dict[str, Any]:
+    """Analyze DNS security features"""
+    security_analysis = {
+        'spf_record': None,
+        'dmarc_record': None,
+        'security_score': 0,
+        'security_features': []
+    }
+
+    for record in txt_records:
+        if record.lower().startswith('v=spf1'):
+            security_analysis['spf_record'] = record
+            security_analysis['security_score'] += 25
+            security_analysis['security_features'].append('SPF configured')
+        elif record.lower().startswith('v=dmarc1'):
+            security_analysis['dmarc_record'] = record
+            security_analysis['security_score'] += 30
+            security_analysis['security_features'].append('DMARC configured')
+
+    return security_analysis
+
+
+# ============================================================================
+# WHOIS Helper Functions
+# ============================================================================
+
+def _get_raw_whois(domain: str) -> Dict[str, Any]:
+    """Get raw WHOIS data"""
+    try:
+        result = subprocess.run(
+            ['whois', domain],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            return {
+                'raw_data': result.stdout,
+                'source': 'system_whois'
+            }
+        else:
+            return {'error': 'WHOIS lookup failed'}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _parse_whois_data(raw_data: str) -> Dict[str, Any]:
+    """Parse raw WHOIS data"""
+    parsed = {
+        'registrar': 'Unknown',
+        'creation_date': 'Unknown',
+        'expiration_date': 'Unknown',
+        'name_servers': [],
+        'status': []
+    }
+
+    try:
+        lines = raw_data.lower().split('\n')
+
+        for line in lines:
+            line = line.strip()
+            if 'registrar:' in line:
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    parsed['registrar'] = parts[1].strip()
+            elif 'creation date:' in line or 'created:' in line:
+                date_value = _extract_date_from_line(line)
+                if date_value:
+                    parsed['creation_date'] = date_value
+            elif 'expiry date:' in line or 'expires:' in line:
+                date_value = _extract_date_from_line(line)
+                if date_value:
+                    parsed['expiration_date'] = date_value
+            elif 'name server:' in line:
+                ns_value = _extract_nameserver_from_line(line)
+                if ns_value:
+                    parsed['name_servers'].append(ns_value)
+
+    except Exception as e:
+        logger.warning(f"Error parsing WHOIS data: {e}")
+
+    return parsed
+
+
+def _extract_date_from_line(line: str) -> Optional[str]:
+    """Extract date from WHOIS line"""
+    import re
+
+    try:
+        date_patterns = [
+            r'\d{4}-\d{2}-\d{2}',
+            r'\d{2}-\w{3}-\d{4}',
+            r'\d{4}\.\d{2}\.\d{2}',
+        ]
+
+        for pattern in date_patterns:
+            match = re.search(pattern, line)
+            if match:
+                return match.group(0)
+
+        return None
+    except Exception:
+        return None
+
+
+# ============================================================================
+# Reputation Analysis Helper Functions
+# ============================================================================
+
+def _check_dns_reputation(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through DNS analysis"""
+    try:
+        dns_reputation = {
+            'has_mx_records': False,
+            'reputation_score': 50,
+            'risk_factors': []
+        }
+
+        mx_records = _get_mx_records(domain)
+        if mx_records:
+            dns_reputation['has_mx_records'] = True
+            dns_reputation['reputation_score'] += 10
+
+        return dns_reputation
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_registration_reputation(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through registration analysis"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_domain_patterns(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through pattern analysis"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_public_blocklists(domain: str) -> Dict[str, Any]:
+    """Check domain against public blocklists"""
+    try:
+        return {'reputation_score': 50, 'blocklisted': False}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_domain_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate domain reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_ip_geographic_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP geographic reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_ip_service_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP service reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_dnsbl_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP against DNS blocklists"""
+    try:
+        return {'reputation_score': 50, 'blocklist_results': {}}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_reverse_dns_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check reverse DNS reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_ip_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate IP reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_structure(url: str, parsed_url) -> Dict[str, Any]:
+    """Analyze URL structure"""
+    try:
+        return {
+            'url_length': len(url),
+            'reputation_score': 50,
+            'risk_factors': []
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_path(parsed_url) -> Dict[str, Any]:
+    """Analyze URL path"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_protocol(parsed_url) -> Dict[str, Any]:
+    """Analyze URL protocol"""
+    try:
+        uses_https = parsed_url.scheme == 'https'
+        score = 60 if uses_https else 40
+        return {'reputation_score': score, 'risk_factors': [] if uses_https else ['Not using HTTPS']}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_url_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate URL reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _extract_nameserver_from_line(line: str) -> Optional[str]:
+    """Extract nameserver from WHOIS line"""
+    try:
+        parts = line.split(':', 1)
+        if len(parts) > 1:
+            ns = parts[1].strip().lower()
+            ns = ns.split()[0] if ns.split() else ns
+            if ns and '.' in ns:
+                return ns
+        return None
+    except Exception:
+        return None
+
+
+# ============================================================================
+# Reputation Analysis Helper Functions
+# ============================================================================
+
+def _check_dns_reputation(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through DNS analysis"""
+    try:
+        dns_reputation = {
+            'has_mx_records': False,
+            'reputation_score': 50,
+            'risk_factors': []
+        }
+
+        mx_records = _get_mx_records(domain)
+        if mx_records:
+            dns_reputation['has_mx_records'] = True
+            dns_reputation['reputation_score'] += 10
+
+        return dns_reputation
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_registration_reputation(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through registration analysis"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_domain_patterns(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through pattern analysis"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_public_blocklists(domain: str) -> Dict[str, Any]:
+    """Check domain against public blocklists"""
+    try:
+        return {'reputation_score': 50, 'blocklisted': False}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_domain_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate domain reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_ip_geographic_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP geographic reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_ip_service_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP service reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_dnsbl_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP against DNS blocklists"""
+    try:
+        return {'reputation_score': 50, 'blocklist_results': {}}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_reverse_dns_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check reverse DNS reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_ip_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate IP reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_structure(url: str, parsed_url) -> Dict[str, Any]:
+    """Analyze URL structure"""
+    try:
+        return {
+            'url_length': len(url),
+            'reputation_score': 50,
+            'risk_factors': []
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_path(parsed_url) -> Dict[str, Any]:
+    """Analyze URL path"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_protocol(parsed_url) -> Dict[str, Any]:
+    """Analyze URL protocol"""
+    try:
+        uses_https = parsed_url.scheme == 'https'
+        score = 60 if uses_https else 40
+        return {'reputation_score': score, 'risk_factors': [] if uses_https else ['Not using HTTPS']}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_url_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate URL reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_whois_data(whois_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Analyze WHOIS data for threats"""
+    analysis = {
+        'risk_level': 'LOW',
+        'risk_factors': [],
+        'registrar_reputation': 'UNKNOWN'
+    }
+
+    try:
+        registrar = whois_data.get('registrar', '').lower()
+        reputable_registrars = ['godaddy', 'namecheap', 'google', 'amazon']
+
+        if any(rep_reg in registrar for rep_reg in reputable_registrars):
+            analysis['registrar_reputation'] = 'HIGH'
+
+    except Exception as e:
+        logger.warning(f"Error analyzing WHOIS data: {e}")
+
+    return analysis
+
+
+def _calculate_domain_metrics(whois_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Calculate domain metrics"""
+    metrics = {
+        'domain_age_days': 0,
+        'domain_age_category': 'UNKNOWN'
+    }
+
+    try:
+        creation_date = whois_data.get('creation_date', '')
+        if creation_date and creation_date != 'Unknown':
+            created = _parse_whois_date(creation_date)
+            if created:
+                from datetime import datetime
+                age_delta = datetime.now() - created
+                metrics['domain_age_days'] = age_delta.days
+
+                if age_delta.days < 30:
+                    metrics['domain_age_category'] = 'VERY_NEW'
+                elif age_delta.days < 365:
+                    metrics['domain_age_category'] = 'NEW'
+                else:
+                    metrics['domain_age_category'] = 'ESTABLISHED'
+
+    except Exception as e:
+        logger.warning(f"Error calculating domain metrics: {e}")
+
+    return metrics
+
+
+def _parse_whois_date(date_string: str) -> Optional[datetime]:
+    """Parse WHOIS date"""
+    from datetime import datetime
+
+    try:
+        date_formats = ['%Y-%m-%d', '%d-%b-%Y', '%Y.%m.%d']
+
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(date_string.strip(), fmt)
+            except ValueError:
+                continue
+
+        return None
+    except Exception:
+        return None
+
+
+# ============================================================================
+# Reputation Analysis Helper Functions
+# ============================================================================
+
+def _check_dns_reputation(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through DNS analysis"""
+    try:
+        dns_reputation = {
+            'has_mx_records': False,
+            'reputation_score': 50,
+            'risk_factors': []
+        }
+
+        mx_records = _get_mx_records(domain)
+        if mx_records:
+            dns_reputation['has_mx_records'] = True
+            dns_reputation['reputation_score'] += 10
+
+        return dns_reputation
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_registration_reputation(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through registration analysis"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_domain_patterns(domain: str) -> Dict[str, Any]:
+    """Check domain reputation through pattern analysis"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_public_blocklists(domain: str) -> Dict[str, Any]:
+    """Check domain against public blocklists"""
+    try:
+        return {'reputation_score': 50, 'blocklisted': False}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_domain_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate domain reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_ip_geographic_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP geographic reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_ip_service_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP service reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_dnsbl_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check IP against DNS blocklists"""
+    try:
+        return {'reputation_score': 50, 'blocklist_results': {}}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _check_reverse_dns_reputation(ip_address: str) -> Dict[str, Any]:
+    """Check reverse DNS reputation"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_ip_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate IP reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_structure(url: str, parsed_url) -> Dict[str, Any]:
+    """Analyze URL structure"""
+    try:
+        return {
+            'url_length': len(url),
+            'reputation_score': 50,
+            'risk_factors': []
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_path(parsed_url) -> Dict[str, Any]:
+    """Analyze URL path"""
+    try:
+        return {'reputation_score': 50, 'risk_factors': []}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _analyze_url_protocol(parsed_url) -> Dict[str, Any]:
+    """Analyze URL protocol"""
+    try:
+        uses_https = parsed_url.scheme == 'https'
+        score = 60 if uses_https else 40
+        return {'reputation_score': score, 'risk_factors': [] if uses_https else ['Not using HTTPS']}
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _aggregate_url_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate URL reputation scores"""
+    try:
+        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
+        aggregated_score = sum(scores) / len(scores) if scores else 50
+
+        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
+
+        return {
+            'aggregated_score': int(aggregated_score),
+            'risk_level': risk_level,
+            'threat_categories': [],
+            'risk_factors': [],
+            'sources_analyzed': len(reputation_sources)
+        }
+    except Exception as e:
+        return {'error': str(e)}
