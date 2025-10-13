@@ -900,34 +900,287 @@ def run_theharvester(target: str, source_type: str = 'domain') -> Dict[str, Any]
 
 
 def perform_ip_geolocation(ip_address: str) -> Dict[str, Any]:
-    """Perform IP geolocation lookup"""
+    """Perform IP geolocation lookup using multiple free services"""
     try:
-        # This would typically use a geolocation API like MaxMind or IPGeolocation
-        # Placeholder implementation
-        return {
-            'country': 'unknown',
-            'country_code': 'unknown',
-            'region': 'unknown',
-            'city': 'unknown',
+        geolocation_data = {
+            'ip_address': ip_address,
+            'country': 'Unknown',
+            'country_code': 'Unknown',
+            'region': 'Unknown',
+            'city': 'Unknown',
             'latitude': 0.0,
             'longitude': 0.0,
-            'timezone': 'unknown'
+            'timezone': 'Unknown',
+            'isp': 'Unknown',
+            'organization': 'Unknown',
+            'sources': [],
+            'confidence': 'LOW'
         }
+
+        # Try multiple free geolocation services
+        services = [
+            _get_geolocation_from_ipapi,
+            _get_geolocation_from_ipinfo,
+            _get_geolocation_from_freegeoip
+        ]
+
+        for service in services:
+            try:
+                result = service(ip_address)
+                if 'error' not in result:
+                    geolocation_data['sources'].append(result.get('source', 'unknown'))
+
+                    # Update data if we get valid results
+                    if result.get('country') and result['country'] != 'Unknown':
+                        geolocation_data.update(result)
+                        geolocation_data['confidence'] = 'HIGH'
+                        break
+
+            except Exception as e:
+                logger.warning(f"Geolocation service failed: {e}")
+                continue
+
+        return geolocation_data
+
+    except Exception as e:
+        logger.error(f"Error in IP geolocation: {e}")
+        return {'error': str(e)}
+
+
+def _get_geolocation_from_ipapi(ip_address: str) -> Dict[str, Any]:
+    """Get geolocation from ip-api.com (free tier)"""
+    try:
+        url = f'http://ip-api.com/json/{ip_address}'
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+
+        if data.get('status') == 'success':
+            return {
+                'source': 'ip-api.com',
+                'country': data.get('country', 'Unknown'),
+                'country_code': data.get('countryCode', 'Unknown'),
+                'region': data.get('regionName', 'Unknown'),
+                'city': data.get('city', 'Unknown'),
+                'latitude': float(data.get('lat', 0.0)),
+                'longitude': float(data.get('lon', 0.0)),
+                'timezone': data.get('timezone', 'Unknown'),
+                'isp': data.get('isp', 'Unknown'),
+                'organization': data.get('org', 'Unknown'),
+                'is_proxy': data.get('proxy', False),
+                'is_mobile': data.get('mobile', False)
+            }
+        else:
+            return {'error': data.get('message', 'IP geolocation failed')}
+
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _get_geolocation_from_ipinfo(ip_address: str) -> Dict[str, Any]:
+    """Get geolocation from ipinfo.io (free tier)"""
+    try:
+        url = f'https://ipinfo.io/{ip_address}/json'
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+
+        if 'bogon' not in data:
+            loc = data.get('loc', '0,0').split(',')
+            lat, lon = float(loc[0]) if len(loc) > 0 else 0.0, float(loc[1]) if len(loc) > 1 else 0.0
+
+            return {
+                'source': 'ipinfo.io',
+                'country': data.get('country', 'Unknown'),
+                'country_code': data.get('country', 'Unknown'),
+                'region': data.get('region', 'Unknown'),
+                'city': data.get('city', 'Unknown'),
+                'latitude': lat,
+                'longitude': lon,
+                'timezone': data.get('timezone', 'Unknown'),
+                'isp': data.get('org', 'Unknown'),
+                'organization': data.get('org', 'Unknown')
+            }
+        else:
+            return {'error': 'Private/bogon IP address'}
+
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _get_geolocation_from_freegeoip(ip_address: str) -> Dict[str, Any]:
+    """Get geolocation from freegeoip.app (free tier)"""
+    try:
+        url = f'https://freegeoip.app/json/{ip_address}'
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+
+        return {
+            'source': 'freegeoip.app',
+            'country': data.get('country_name', 'Unknown'),
+            'country_code': data.get('country_code', 'Unknown'),
+            'region': data.get('region_name', 'Unknown'),
+            'city': data.get('city', 'Unknown'),
+            'latitude': float(data.get('latitude', 0.0)),
+            'longitude': float(data.get('longitude', 0.0)),
+            'timezone': data.get('time_zone', 'Unknown')
+        }
+
     except Exception as e:
         return {'error': str(e)}
 
 
 def perform_asn_lookup(ip_address: str) -> Dict[str, Any]:
-    """Perform ASN lookup for IP address"""
+    """Perform ASN lookup for IP address using multiple methods"""
     try:
-        # This would typically use an ASN database or API
-        # Placeholder implementation
-        return {
-            'asn': 'unknown',
-            'organization': 'unknown',
-            'network': 'unknown',
-            'country': 'unknown'
+        asn_data = {
+            'ip_address': ip_address,
+            'asn': 'Unknown',
+            'organization': 'Unknown',
+            'network': 'Unknown',
+            'country': 'Unknown',
+            'registry': 'Unknown',
+            'sources': [],
+            'confidence': 'LOW'
         }
+
+        # Try multiple ASN lookup methods
+        methods = [
+            _get_asn_from_cymru,
+            _get_asn_from_whois,
+            _get_asn_from_bgpview
+        ]
+
+        for method in methods:
+            try:
+                result = method(ip_address)
+                if 'error' not in result:
+                    asn_data['sources'].append(result.get('source', 'unknown'))
+
+                    # Update data if we get valid results
+                    if result.get('asn') and result['asn'] != 'Unknown':
+                        asn_data.update(result)
+                        asn_data['confidence'] = 'HIGH'
+                        break
+
+            except Exception as e:
+                logger.warning(f"ASN lookup method failed: {e}")
+                continue
+
+        return asn_data
+
+    except Exception as e:
+        logger.error(f"Error in ASN lookup: {e}")
+        return {'error': str(e)}
+
+
+def _get_asn_from_cymru(ip_address: str) -> Dict[str, Any]:
+    """Get ASN information from Team Cymru's whois service"""
+    try:
+        # Use Team Cymru's whois service for ASN lookup
+        result = subprocess.run(
+            ['whois', '-h', 'whois.cymru.com', f'{ip_address}'],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                if '|' in line:
+                    parts = [part.strip() for part in line.split('|')]
+                    if len(parts) >= 4:
+                        return {
+                            'source': 'cymru',
+                            'asn': f"AS{parts[0]}" if parts[0].isdigit() else parts[0],
+                            'network': parts[1] if len(parts) > 1 else 'Unknown',
+                            'country': parts[2] if len(parts) > 2 else 'Unknown',
+                            'registry': parts[3] if len(parts) > 3 else 'Unknown',
+                            'organization': parts[4] if len(parts) > 4 else 'Unknown'
+                        }
+
+        return {'error': 'No ASN data found'}
+
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _get_asn_from_whois(ip_address: str) -> Dict[str, Any]:
+    """Get ASN information from standard whois"""
+    try:
+        result = subprocess.run(
+            ['whois', ip_address],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            output = result.stdout.lower()
+            asn_data = {'source': 'whois'}
+
+            # Look for ASN information in whois output
+            for line in result.stdout.split('\n'):
+                line_lower = line.lower()
+                if 'origin:' in line_lower or 'originas:' in line_lower:
+                    asn_value = line.split(':', 1)[1].strip()
+                    if asn_value.startswith('as'):
+                        asn_data['asn'] = asn_value.upper()
+                    elif asn_value.isdigit():
+                        asn_data['asn'] = f"AS{asn_value}"
+
+                elif 'netname:' in line_lower or 'org-name:' in line_lower:
+                    asn_data['organization'] = line.split(':', 1)[1].strip()
+
+                elif 'country:' in line_lower:
+                    asn_data['country'] = line.split(':', 1)[1].strip().upper()
+
+                elif 'cidr:' in line_lower or 'route:' in line_lower:
+                    asn_data['network'] = line.split(':', 1)[1].strip()
+
+            if 'asn' in asn_data:
+                return asn_data
+
+        return {'error': 'No ASN data found in whois'}
+
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _get_asn_from_bgpview(ip_address: str) -> Dict[str, Any]:
+    """Get ASN information from BGPView API (free tier)"""
+    try:
+        url = f'https://api.bgpview.io/ip/{ip_address}'
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+
+        data = response.json()
+
+        if data.get('status') == 'ok' and 'data' in data:
+            ip_data = data['data']
+            prefixes = ip_data.get('prefixes', [])
+
+            if prefixes:
+                prefix_data = prefixes[0]  # Take the first/most specific prefix
+                asn_info = prefix_data.get('asn', {})
+
+                return {
+                    'source': 'bgpview',
+                    'asn': f"AS{asn_info.get('asn', 'Unknown')}",
+                    'organization': asn_info.get('name', 'Unknown'),
+                    'network': prefix_data.get('prefix', 'Unknown'),
+                    'country': asn_info.get('country_code', 'Unknown'),
+                    'registry': 'Unknown',
+                    'description': asn_info.get('description', 'Unknown')
+                }
+
+        return {'error': 'No ASN data found in BGPView'}
+
     except Exception as e:
         return {'error': str(e)}
 
@@ -1360,6 +1613,116 @@ def _get_txt_records(domain: str) -> List[str]:
         return []
 
 
+def _get_cname_records(domain: str) -> List[str]:
+    """Get CNAME records for domain"""
+    try:
+        result = subprocess.run(
+            ['nslookup', '-type=CNAME', domain],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        cname_records = []
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if 'canonical name =' in line.lower():
+                    parts = line.split('=')
+                    if len(parts) > 1:
+                        cname_records.append(parts[1].strip().rstrip('.'))
+
+        return list(set(cname_records))
+    except Exception:
+        return []
+
+
+def _get_soa_record(domain: str) -> Dict[str, Any]:
+    """Get SOA record for domain"""
+    try:
+        result = subprocess.run(
+            ['nslookup', '-type=SOA', domain],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        soa_data = {}
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if 'origin =' in line.lower():
+                    parts = line.split('=')
+                    if len(parts) > 1:
+                        soa_data['primary_ns'] = parts[1].strip().rstrip('.')
+                elif 'mail addr =' in line.lower():
+                    parts = line.split('=')
+                    if len(parts) > 1:
+                        soa_data['admin_email'] = parts[1].strip().rstrip('.')
+
+        return soa_data
+    except Exception:
+        return {}
+
+
+def _analyze_dns_configuration(dns_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Analyze DNS configuration for issues"""
+    analysis = {
+        'has_ipv6': bool(dns_data.get('aaaa_records')),
+        'has_mail_servers': bool(dns_data.get('mx_records')),
+        'nameserver_count': len(dns_data.get('ns_records', [])),
+        'security_score': 0,
+        'recommendations': []
+    }
+
+    if not analysis['has_ipv6']:
+        analysis['recommendations'].append('Consider adding IPv6 support (AAAA records)')
+
+    if analysis['nameserver_count'] < 2:
+        analysis['recommendations'].append('Consider using multiple nameservers for redundancy')
+
+    dns_security = dns_data.get('dns_security', {})
+    analysis['security_score'] = dns_security.get('security_score', 0)
+
+    return analysis
+
+
+def _check_modern_dns_support(domain: str) -> Dict[str, Any]:
+    """Check for modern DNS features"""
+    modern_features = {
+        'caa_records': False,
+        'dnssec_enabled': False,
+        'supports_doh': False,
+        'supports_dot': False
+    }
+
+    try:
+        # Check CAA records
+        result = subprocess.run(
+            ['nslookup', '-type=CAA', domain],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0 and 'issue' in result.stdout.lower():
+            modern_features['caa_records'] = True
+
+        # Basic DNSSEC check (simplified)
+        result = subprocess.run(
+            ['nslookup', '-type=DNSKEY', domain],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0 and 'dnskey' in result.stdout.lower():
+            modern_features['dnssec_enabled'] = True
+
+    except Exception:
+        pass
+
+    return modern_features
+
+
 def _analyze_dns_security(txt_records: List[str], domain: str) -> Dict[str, Any]:
     """Analyze DNS security features"""
     security_analysis = {
@@ -1646,172 +2009,6 @@ def _extract_nameserver_from_line(line: str) -> Optional[str]:
         return None
 
 
-# ============================================================================
-# Reputation Analysis Helper Functions
-# ============================================================================
-
-def _check_dns_reputation(domain: str) -> Dict[str, Any]:
-    """Check domain reputation through DNS analysis"""
-    try:
-        dns_reputation = {
-            'has_mx_records': False,
-            'reputation_score': 50,
-            'risk_factors': []
-        }
-
-        mx_records = _get_mx_records(domain)
-        if mx_records:
-            dns_reputation['has_mx_records'] = True
-            dns_reputation['reputation_score'] += 10
-
-        return dns_reputation
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_registration_reputation(domain: str) -> Dict[str, Any]:
-    """Check domain reputation through registration analysis"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_domain_patterns(domain: str) -> Dict[str, Any]:
-    """Check domain reputation through pattern analysis"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_public_blocklists(domain: str) -> Dict[str, Any]:
-    """Check domain against public blocklists"""
-    try:
-        return {'reputation_score': 50, 'blocklisted': False}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _aggregate_domain_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggregate domain reputation scores"""
-    try:
-        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
-        aggregated_score = sum(scores) / len(scores) if scores else 50
-
-        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
-
-        return {
-            'aggregated_score': int(aggregated_score),
-            'risk_level': risk_level,
-            'threat_categories': [],
-            'risk_factors': [],
-            'sources_analyzed': len(reputation_sources)
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_ip_geographic_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check IP geographic reputation"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_ip_service_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check IP service reputation"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_dnsbl_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check IP against DNS blocklists"""
-    try:
-        return {'reputation_score': 50, 'blocklist_results': {}}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_reverse_dns_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check reverse DNS reputation"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _aggregate_ip_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggregate IP reputation scores"""
-    try:
-        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
-        aggregated_score = sum(scores) / len(scores) if scores else 50
-
-        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
-
-        return {
-            'aggregated_score': int(aggregated_score),
-            'risk_level': risk_level,
-            'threat_categories': [],
-            'risk_factors': [],
-            'sources_analyzed': len(reputation_sources)
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _analyze_url_structure(url: str, parsed_url) -> Dict[str, Any]:
-    """Analyze URL structure"""
-    try:
-        return {
-            'url_length': len(url),
-            'reputation_score': 50,
-            'risk_factors': []
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _analyze_url_path(parsed_url) -> Dict[str, Any]:
-    """Analyze URL path"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _analyze_url_protocol(parsed_url) -> Dict[str, Any]:
-    """Analyze URL protocol"""
-    try:
-        uses_https = parsed_url.scheme == 'https'
-        score = 60 if uses_https else 40
-        return {'reputation_score': score, 'risk_factors': [] if uses_https else ['Not using HTTPS']}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _aggregate_url_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggregate URL reputation scores"""
-    try:
-        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
-        aggregated_score = sum(scores) / len(scores) if scores else 50
-
-        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
-
-        return {
-            'aggregated_score': int(aggregated_score),
-            'risk_level': risk_level,
-            'threat_categories': [],
-            'risk_factors': [],
-            'sources_analyzed': len(reputation_sources)
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-
 def _analyze_whois_data(whois_data: Dict[str, Any]) -> Dict[str, Any]:
     """Analyze WHOIS data for threats"""
     analysis = {
@@ -1878,169 +2075,3 @@ def _parse_whois_date(date_string: str) -> Optional[datetime]:
         return None
     except Exception:
         return None
-
-
-# ============================================================================
-# Reputation Analysis Helper Functions
-# ============================================================================
-
-def _check_dns_reputation(domain: str) -> Dict[str, Any]:
-    """Check domain reputation through DNS analysis"""
-    try:
-        dns_reputation = {
-            'has_mx_records': False,
-            'reputation_score': 50,
-            'risk_factors': []
-        }
-
-        mx_records = _get_mx_records(domain)
-        if mx_records:
-            dns_reputation['has_mx_records'] = True
-            dns_reputation['reputation_score'] += 10
-
-        return dns_reputation
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_registration_reputation(domain: str) -> Dict[str, Any]:
-    """Check domain reputation through registration analysis"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_domain_patterns(domain: str) -> Dict[str, Any]:
-    """Check domain reputation through pattern analysis"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_public_blocklists(domain: str) -> Dict[str, Any]:
-    """Check domain against public blocklists"""
-    try:
-        return {'reputation_score': 50, 'blocklisted': False}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _aggregate_domain_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggregate domain reputation scores"""
-    try:
-        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
-        aggregated_score = sum(scores) / len(scores) if scores else 50
-
-        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
-
-        return {
-            'aggregated_score': int(aggregated_score),
-            'risk_level': risk_level,
-            'threat_categories': [],
-            'risk_factors': [],
-            'sources_analyzed': len(reputation_sources)
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_ip_geographic_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check IP geographic reputation"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_ip_service_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check IP service reputation"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_dnsbl_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check IP against DNS blocklists"""
-    try:
-        return {'reputation_score': 50, 'blocklist_results': {}}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _check_reverse_dns_reputation(ip_address: str) -> Dict[str, Any]:
-    """Check reverse DNS reputation"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _aggregate_ip_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggregate IP reputation scores"""
-    try:
-        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
-        aggregated_score = sum(scores) / len(scores) if scores else 50
-
-        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
-
-        return {
-            'aggregated_score': int(aggregated_score),
-            'risk_level': risk_level,
-            'threat_categories': [],
-            'risk_factors': [],
-            'sources_analyzed': len(reputation_sources)
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _analyze_url_structure(url: str, parsed_url) -> Dict[str, Any]:
-    """Analyze URL structure"""
-    try:
-        return {
-            'url_length': len(url),
-            'reputation_score': 50,
-            'risk_factors': []
-        }
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _analyze_url_path(parsed_url) -> Dict[str, Any]:
-    """Analyze URL path"""
-    try:
-        return {'reputation_score': 50, 'risk_factors': []}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _analyze_url_protocol(parsed_url) -> Dict[str, Any]:
-    """Analyze URL protocol"""
-    try:
-        uses_https = parsed_url.scheme == 'https'
-        score = 60 if uses_https else 40
-        return {'reputation_score': score, 'risk_factors': [] if uses_https else ['Not using HTTPS']}
-    except Exception as e:
-        return {'error': str(e)}
-
-
-def _aggregate_url_reputation(reputation_sources: Dict[str, Any]) -> Dict[str, Any]:
-    """Aggregate URL reputation scores"""
-    try:
-        scores = [data.get('reputation_score', 50) for data in reputation_sources.values()]
-        aggregated_score = sum(scores) / len(scores) if scores else 50
-
-        risk_level = 'HIGH' if aggregated_score < 40 else ('MEDIUM' if aggregated_score < 70 else 'LOW')
-
-        return {
-            'aggregated_score': int(aggregated_score),
-            'risk_level': risk_level,
-            'threat_categories': [],
-            'risk_factors': [],
-            'sources_analyzed': len(reputation_sources)
-        }
-    except Exception as e:
-        return {'error': str(e)}
