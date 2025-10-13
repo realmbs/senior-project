@@ -33,3 +33,5 @@ dist/
 
 # Claude
 CLAUDE.md
+CLAUDE.local.md
+CLAUDE.*.local.md
