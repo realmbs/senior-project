@@ -1,5 +1,6 @@
 """
 Threat Intelligence Collector Lambda Function
+Phase 8B Enhanced: Event-driven architecture integration
 
 This module collects threat intelligence from OSINT sources including:
 - AT&T Alien Labs OTX (Open Threat Exchange)
@@ -10,7 +11,21 @@ Features:
 - Automatic deduplication using pattern hashing
 - Cost-optimized with 256MB memory allocation
 - Raw data archival to S3 for audit trails
+- EventBridge integration for automated processing triggers
+- Priority-based processing classification
+- Workflow correlation and tracking
 """
+
+# Import event utilities for Phase 8B integration
+try:
+    from event_utils import (
+        emit_collection_completed, WorkflowTracker, ThreatAnalyzer,
+        ProcessingPriority, EventEmitter, EventType
+    )
+    EVENT_INTEGRATION_AVAILABLE = True
+except ImportError:
+    logger.warning("Event utilities not available - running without event integration")
+    EVENT_INTEGRATION_AVAILABLE = False
 
 import json
 import boto3
@@ -196,6 +211,58 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 
         logger.info(f"Collection completed: {results['new_indicators']} new indicators, "
                    f"{results['duplicates_filtered']} duplicates filtered")
+
+        # Phase 8B: Emit collection completed events for event-driven processing
+        if EVENT_INTEGRATION_AVAILABLE and results['new_indicators'] > 0:
+            correlation_id = WorkflowTracker.generate_correlation_id()
+
+            # Prepare collection data with indicators for processing
+            collection_data = {
+                'indicators_collected': results['total_indicators'],
+                'new_indicators': results['new_indicators'],
+                'duplicates_filtered': results['duplicates_filtered'],
+                'collections': results['collections'],
+                'indicators': _extract_collected_indicators(results)  # Include actual indicators
+            }
+
+            # Emit overall collection completed event
+            success = emit_collection_completed(
+                source='multi-source',
+                stats=collection_data,
+                correlation_id=correlation_id
+            )
+
+            if success:
+                logger.info(f"Collection completed event emitted with correlation_id: {correlation_id}")
+                results['workflow'] = {
+                    'correlation_id': correlation_id,
+                    'event_emitted': True,
+                    'processing_triggered': True
+                }
+            else:
+                logger.warning("Failed to emit collection completed event")
+                results['workflow'] = {
+                    'event_emitted': False,
+                    'processing_triggered': False
+                }
+
+            # Emit source-specific events for individual collections
+            for source, collection_result in results['collections'].items():
+                if collection_result.get('new_indicators', 0) > 0:
+                    source_success = emit_collection_completed(
+                        source=source,
+                        stats=collection_result,
+                        correlation_id=correlation_id
+                    )
+                    logger.info(f"Source-specific event for {source}: {'success' if source_success else 'failed'}")
+
+        elif EVENT_INTEGRATION_AVAILABLE:
+            logger.info("No new indicators collected - skipping event emission")
+            results['workflow'] = {
+                'event_emitted': False,
+                'processing_triggered': False,
+                'reason': 'no_new_indicators'
+            }
 
         return {
             'statusCode': 200,
@@ -1007,3 +1074,72 @@ def get_collection_timestamp() -> str:
     from datetime import timedelta
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     return yesterday.isoformat()
+
+
+def _extract_collected_indicators(results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extract all collected indicators from collection results for event emission
+
+    Args:
+        results: Collection results dictionary
+
+    Returns:
+        List of indicator objects for processing
+    """
+    indicators = []
+
+    try:
+        # Extract from each collection source
+        for source, collection_data in results.get('collections', {}).items():
+            source_indicators = collection_data.get('indicators', [])
+
+            # Add priority classification for each indicator
+            for indicator in source_indicators:
+                # Analyze priority using threat analyzer if available
+                if EVENT_INTEGRATION_AVAILABLE:
+                    priority = ThreatAnalyzer.analyze_threat_priority(indicator)
+                    indicator['processing_priority'] = priority.value
+
+                    # Add additional metadata for event processing
+                    indicator['collection_source'] = source
+                    indicator['collection_timestamp'] = datetime.now(timezone.utc).isoformat()
+
+                indicators.append(indicator)
+
+        logger.info(f"Extracted {len(indicators)} indicators for event processing")
+
+        # Log priority distribution
+        if EVENT_INTEGRATION_AVAILABLE and indicators:
+            priority_counts = {}
+            for indicator in indicators:
+                priority = indicator.get('processing_priority', 'standard')
+                priority_counts[priority] = priority_counts.get(priority, 0) + 1
+
+            logger.info(f"Priority distribution: {priority_counts}")
+
+        return indicators
+
+    except Exception as e:
+        logger.warning(f"Error extracting indicators for event processing: {e}")
+        return []
+
+
+def _emit_error_event(error_message: str, error_context: Dict[str, Any]) -> None:
+    """
+    Emit error event for failed collections
+
+    Args:
+        error_message: Error description
+        error_context: Additional error context
+    """
+    if not EVENT_INTEGRATION_AVAILABLE:
+        return
+
+    try:
+        EventEmitter.emit_system_error(
+            error_message=error_message,
+            error_context=error_context
+        )
+        logger.info("Collection error event emitted")
+    except Exception as e:
+        logger.warning(f"Failed to emit error event: {e}")

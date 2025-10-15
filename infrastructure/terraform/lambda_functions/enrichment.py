@@ -1,5 +1,6 @@
 """
 OSINT Enrichment Lambda Function
+Phase 8B Enhanced: Event-driven workflow integration
 
 This module provides OSINT enrichment capabilities using containerized tools:
 - TheHarvester for domain/email reconnaissance
@@ -12,7 +13,21 @@ Features:
 - Intelligent caching with 7-day TTL
 - Rate limiting and API quota management
 - Comprehensive error handling and retry logic
+- EventBridge integration for workflow automation
+- Priority-based enrichment selection
+- Workflow correlation and completion events
 """
+
+# Import event utilities for Phase 8B integration
+try:
+    from event_utils import (
+        emit_enrichment_completed, WorkflowTracker, ThreatAnalyzer,
+        ProcessingPriority, EventEmitter, EventType
+    )
+    EVENT_INTEGRATION_AVAILABLE = True
+except ImportError:
+    logger.warning("Event utilities not available - running without event integration")
+    EVENT_INTEGRATION_AVAILABLE = False
 
 import json
 import boto3
@@ -67,6 +82,21 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     try:
         logger.info(f"Starting OSINT enrichment - Environment: {ENVIRONMENT}")
 
+        # Phase 8B: Handle EventBridge events for workflow integration
+        correlation_id = None
+        workflow_id = None
+
+        if EVENT_INTEGRATION_AVAILABLE:
+            # Extract workflow information
+            correlation_id = WorkflowTracker.extract_correlation_id(event)
+            workflow_id = event.get('workflow_id') or (event.get('detail', {}).get('workflow_id'))
+
+            # Handle EventBridge processing completed events
+            if 'source' in event and 'detail' in event:
+                if event.get('source', '').startswith('threat-intel.'):
+                    logger.info(f"Processing EventBridge event from {event.get('source')}")
+                    return handle_eventbridge_enrichment(event, correlation_id, workflow_id)
+
         # Get API keys from Secrets Manager
         api_keys = get_api_keys()
 
@@ -107,6 +137,25 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 results['errors'].append(f"Rate limit exceeded for target: {target}")
 
         logger.info(f"Enrichment completed: {len(results['enrichment_results'])} targets processed")
+
+        # Phase 8B: Emit enrichment completed event for workflow completion
+        if EVENT_INTEGRATION_AVAILABLE and results['enrichment_results']:
+            enrichment_success = emit_enrichment_completed(
+                enriched_count=len(results['enrichment_results']),
+                enrichment_results=results['enrichment_results'],
+                workflow_id=workflow_id,
+                correlation_id=correlation_id
+            )
+
+            if enrichment_success:
+                logger.info(f"Enrichment completed event emitted - workflow_id: {workflow_id}")
+                results['workflow'] = {
+                    'correlation_id': correlation_id,
+                    'workflow_id': workflow_id,
+                    'enrichment_event_emitted': True
+                }
+            else:
+                logger.warning("Failed to emit enrichment completed event")
 
         return create_response(200, results)
 
@@ -2075,3 +2124,216 @@ def _parse_whois_date(date_string: str) -> Optional[datetime]:
         return None
     except Exception:
         return None
+
+
+def handle_eventbridge_enrichment(event: Dict[str, Any], correlation_id: Optional[str], workflow_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Handle EventBridge processing completed events for selective enrichment
+
+    Args:
+        event: EventBridge event
+        correlation_id: Workflow correlation ID
+        workflow_id: Workflow execution ID
+
+    Returns:
+        Enrichment response
+    """
+    try:
+        detail = event.get('detail', {})
+        event_type = detail.get('event_type')
+
+        logger.info(f"Processing EventBridge enrichment event: {event_type}")
+
+        # Handle processing completed events
+        if event_type == 'processing.completed':
+            processing_data = detail.get('data', {})
+            high_confidence_indicators = processing_data.get('high_confidence_indicators', [])
+
+            if not high_confidence_indicators:
+                logger.info("No high-confidence indicators for enrichment")
+                return create_response(200, {
+                    'message': 'No indicators require enrichment',
+                    'correlation_id': correlation_id,
+                    'workflow_id': workflow_id
+                })
+
+            # Selective enrichment based on priority
+            enrichment_targets = _select_enrichment_targets(high_confidence_indicators)
+
+            if not enrichment_targets:
+                logger.info("No indicators selected for enrichment after filtering")
+                return create_response(200, {
+                    'message': 'No indicators selected for enrichment',
+                    'correlation_id': correlation_id,
+                    'workflow_id': workflow_id
+                })
+
+            # Process enrichment
+            results = _process_priority_enrichment(enrichment_targets, workflow_id, correlation_id)
+
+            return create_response(200, results)
+
+        else:
+            logger.warning(f"Unsupported EventBridge event type for enrichment: {event_type}")
+            return create_response(400, {'error': f'Unsupported event type: {event_type}'})
+
+    except Exception as e:
+        logger.error(f"Error handling EventBridge enrichment event: {e}", exc_info=True)
+
+        # Emit error event
+        if EVENT_INTEGRATION_AVAILABLE:
+            EventEmitter.emit_system_error(
+                error_message=str(e),
+                error_context={'event_type': 'eventbridge_enrichment', 'original_event': event},
+                workflow_id=workflow_id,
+                correlation_id=correlation_id
+            )
+
+        return create_response(500, {
+            'error': 'EventBridge enrichment failed',
+            'message': str(e) if ENVIRONMENT == 'dev' else 'Internal error'
+        })
+
+
+def _select_enrichment_targets(indicators: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Select indicators for enrichment based on value and feasibility
+
+    Args:
+        indicators: High-confidence indicators from processing
+
+    Returns:
+        List of indicators selected for enrichment
+    """
+    selected = []
+
+    for indicator in indicators:
+        pattern = indicator.get('pattern', '')
+        confidence = indicator.get('confidence', 0)
+        threat_type = indicator.get('threat_type', '')
+
+        # Select based on enrichment value
+        should_enrich = False
+
+        # Domains and IPs are good candidates for enrichment
+        if any(pattern_type in pattern for pattern_type in ['domain-name', 'ipv4-addr', 'ipv6-addr']):
+            should_enrich = True
+
+        # High-value threat types
+        if threat_type in ['c2_infrastructure', 'malware', 'phishing']:
+            should_enrich = True
+
+        # Very high confidence indicators
+        if confidence >= 85:
+            should_enrich = True
+
+        # Government or commercial sources get priority
+        if indicator.get('source_name') in ['government', 'commercial']:
+            should_enrich = True
+
+        if should_enrich:
+            selected.append(indicator)
+
+    logger.info(f"Selected {len(selected)} indicators for enrichment from {len(indicators)} candidates")
+    return selected
+
+
+def _process_priority_enrichment(targets: List[Dict[str, Any]], workflow_id: Optional[str], correlation_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Process enrichment for selected high-priority targets
+
+    Args:
+        targets: Indicators selected for enrichment
+        workflow_id: Workflow execution ID
+        correlation_id: Workflow correlation ID
+
+    Returns:
+        Enrichment results
+    """
+    results = {
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'environment': ENVIRONMENT,
+        'correlation_id': correlation_id,
+        'workflow_id': workflow_id,
+        'enrichment_stats': {
+            'targets_processed': 0,
+            'successful_enrichments': 0,
+            'failed_enrichments': 0,
+            'cached_results': 0
+        },
+        'enrichment_results': [],
+        'errors': []
+    }
+
+    try:
+        # Get API keys
+        api_keys = get_api_keys()
+
+        # Process each target with priority handling
+        for target in targets:
+            try:
+                # Extract enrichment targets from indicator
+                enrichment_targets = _extract_targets_from_indicator(target)
+
+                for enrichment_target in enrichment_targets:
+                    if check_rate_limit():
+                        enrichment_result = process_enrichment_target(enrichment_target, api_keys)
+                        results['enrichment_results'].append(enrichment_result)
+                        results['enrichment_stats']['successful_enrichments'] += 1
+                    else:
+                        logger.warning(f"Rate limit exceeded for target: {enrichment_target}")
+                        results['enrichment_stats']['failed_enrichments'] += 1
+
+                results['enrichment_stats']['targets_processed'] += 1
+
+            except Exception as e:
+                logger.error(f"Error processing enrichment target: {e}")
+                results['errors'].append(str(e))
+                results['enrichment_stats']['failed_enrichments'] += 1
+
+        logger.info(f"Priority enrichment completed: {results['enrichment_stats']['successful_enrichments']} successful")
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Error in priority enrichment processing: {e}")
+        results['errors'].append(str(e))
+        return results
+
+
+def _extract_targets_from_indicator(indicator: Dict[str, Any]) -> List[str]:
+    """
+    Extract enrichment targets from STIX indicator pattern
+
+    Args:
+        indicator: STIX indicator object
+
+    Returns:
+        List of targets for enrichment
+    """
+    targets = []
+    pattern = indicator.get('pattern', '')
+
+    # Extract values using regex patterns
+    import re
+
+    # Extract domain names
+    domain_matches = re.findall(r"domain-name:value\s*=\s*'([^']+)'", pattern)
+    targets.extend(domain_matches)
+
+    # Extract IP addresses
+    ip_matches = re.findall(r"(?:ipv4|ipv6)-addr:value\s*=\s*'([^']+)'", pattern)
+    targets.extend(ip_matches)
+
+    # Extract URLs (domain part)
+    url_matches = re.findall(r"url:value\s*=\s*'([^']+)'", pattern)
+    for url in url_matches:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if parsed.netloc:
+                targets.append(parsed.netloc)
+        except Exception:
+            pass
+
+    return list(set(targets))  # Remove duplicates

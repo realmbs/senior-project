@@ -35,6 +35,17 @@ except ImportError:
     logger.warning("Advanced search engine not available - using basic search")
     ADVANCED_SEARCH_AVAILABLE = False
 
+# Import event utilities for Phase 8B integration
+try:
+    from event_utils import (
+        emit_processing_completed, emit_critical_threat, WorkflowTracker, ThreatAnalyzer,
+        ProcessingPriority, EventEmitter, EventType, EventValidator
+    )
+    EVENT_INTEGRATION_AVAILABLE = True
+except ImportError:
+    logger.warning("Event utilities not available - running without event integration")
+    EVENT_INTEGRATION_AVAILABLE = False
+
 import json
 import boto3
 import logging
@@ -112,7 +123,23 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             'errors': []
         }
 
-        # Enhanced processing modes including search and export
+        # Phase 8B: Handle EventBridge events
+        correlation_id = None
+        workflow_id = None
+        processing_priority = ProcessingPriority.STANDARD
+
+        if EVENT_INTEGRATION_AVAILABLE:
+            # Extract correlation and workflow IDs from event
+            correlation_id = WorkflowTracker.extract_correlation_id(event)
+            workflow_id = event.get('workflow_id') or (event.get('detail', {}).get('workflow_id'))
+
+            # Handle EventBridge collection completed events
+            if 'source' in event and 'detail' in event:
+                if event.get('source', '').startswith('threat-intel.'):
+                    logger.info(f"Processing EventBridge event from {event.get('source')}")
+                    return handle_eventbridge_processing(event, correlation_id, workflow_id)
+
+        # Enhanced processing modes including search, export, and priority processing
         if 'action' in event:
             action = event.get('action')
 
@@ -121,6 +148,12 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             elif action == 'export' and ADVANCED_SEARCH_AVAILABLE:
                 return handle_export_request(event)
             elif action == 'process':
+                # Extract priority and workflow info for action-based processing
+                if EVENT_INTEGRATION_AVAILABLE:
+                    priority_str = event.get('priority', 'standard')
+                    processing_priority = ProcessingPriority(priority_str)
+                    workflow_id = event.get('workflow_id')
+                    correlation_id = event.get('correlation_id')
                 # Continue with standard processing
                 pass
             else:
@@ -156,6 +189,47 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 
         logger.info(f"Processing completed: {results['processing_stats']['valid_indicators']} "
                    f"valid indicators processed")
+
+        # Phase 8B: Emit processing completed events and detect critical threats
+        if EVENT_INTEGRATION_AVAILABLE:
+            # Identify high-confidence indicators for enrichment
+            high_confidence_indicators = _extract_high_confidence_indicators(indicators, results)
+
+            # Detect critical threats for immediate alerting
+            critical_threats = _detect_critical_threats(indicators, results)
+
+            # Emit processing completed event
+            processing_success = emit_processing_completed(
+                stats={
+                    'indicators_processed': results['processing_stats']['indicators_processed'],
+                    'valid_indicators': results['processing_stats']['valid_indicators'],
+                    'invalid_indicators': results['processing_stats']['invalid_indicators'],
+                    'enriched_indicators': results['processing_stats']['enriched_indicators'],
+                    'high_confidence_indicators': high_confidence_indicators
+                },
+                workflow_id=workflow_id,
+                correlation_id=correlation_id
+            )
+
+            if processing_success:
+                logger.info(f"Processing completed event emitted - workflow_id: {workflow_id}")
+                results['workflow'] = {
+                    'correlation_id': correlation_id,
+                    'workflow_id': workflow_id,
+                    'processing_event_emitted': True,
+                    'high_confidence_count': len(high_confidence_indicators),
+                    'critical_threats_count': len(critical_threats)
+                }
+            else:
+                logger.warning("Failed to emit processing completed event")
+
+            # Emit critical threat events if detected
+            if critical_threats:
+                critical_success = emit_critical_threat(
+                    indicators=critical_threats,
+                    correlation_id=correlation_id
+                )
+                logger.critical(f"Critical threats detected and {'alerted' if critical_success else 'alert failed'}: {len(critical_threats)} threats")
 
         return create_response(200, results)
 
@@ -943,6 +1017,250 @@ def enhanced_search_indicators(search_query: str, search_options: Dict[str, Any]
         for component in components:
             results.extend(search_similar_patterns(component))
         return results
+
+
+def handle_eventbridge_processing(event: Dict[str, Any], correlation_id: Optional[str], workflow_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Handle EventBridge collection completed events for automatic processing
+
+    Args:
+        event: EventBridge event
+        correlation_id: Workflow correlation ID
+        workflow_id: Workflow execution ID
+
+    Returns:
+        Processing response
+    """
+    try:
+        detail = event.get('detail', {})
+        event_type = detail.get('event_type')
+
+        logger.info(f"Processing EventBridge event: {event_type}")
+
+        # Handle collection completed events
+        if event_type == 'collection.completed':
+            collection_data = detail.get('data', {})
+            indicators = collection_data.get('indicators', [])
+
+            if not indicators:
+                logger.info("No indicators in collection event - nothing to process")
+                return create_response(200, {
+                    'message': 'No indicators to process',
+                    'correlation_id': correlation_id,
+                    'workflow_id': workflow_id
+                })
+
+            # Process indicators with priority-based batching
+            results = _process_indicators_with_priority(indicators, correlation_id, workflow_id)
+
+            return create_response(200, results)
+
+        else:
+            logger.warning(f"Unsupported EventBridge event type: {event_type}")
+            return create_response(400, {'error': f'Unsupported event type: {event_type}'})
+
+    except Exception as e:
+        logger.error(f"Error handling EventBridge event: {e}", exc_info=True)
+
+        # Emit error event
+        if EVENT_INTEGRATION_AVAILABLE:
+            EventEmitter.emit_system_error(
+                error_message=str(e),
+                error_context={'event_type': 'eventbridge_processing', 'original_event': event},
+                workflow_id=workflow_id,
+                correlation_id=correlation_id
+            )
+
+        return create_response(500, {
+            'error': 'EventBridge processing failed',
+            'message': str(e) if ENVIRONMENT == 'dev' else 'Internal error'
+        })
+
+
+def _process_indicators_with_priority(indicators: List[Dict[str, Any]], correlation_id: Optional[str], workflow_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Process indicators with priority-based handling
+
+    Args:
+        indicators: List of indicators to process
+        correlation_id: Workflow correlation ID
+        workflow_id: Workflow execution ID
+
+    Returns:
+        Processing results
+    """
+    results = {
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'environment': ENVIRONMENT,
+        'correlation_id': correlation_id,
+        'workflow_id': workflow_id,
+        'processing_stats': {
+            'indicators_processed': 0,
+            'valid_indicators': 0,
+            'invalid_indicators': 0,
+            'enriched_indicators': 0,
+            'correlation_matches': 0
+        },
+        'priority_stats': {
+            'critical': 0,
+            'high': 0,
+            'standard': 0,
+            'low': 0
+        },
+        'quality_metrics': {
+            'avg_confidence_score': 0,
+            'high_confidence_count': 0,
+            'low_confidence_count': 0
+        },
+        'errors': []
+    }
+
+    # Group indicators by priority
+    priority_groups = _group_indicators_by_priority(indicators)
+
+    # Process critical and high priority indicators immediately
+    for priority in [ProcessingPriority.CRITICAL, ProcessingPriority.HIGH]:
+        if priority in priority_groups:
+            priority_indicators = priority_groups[priority]
+            logger.info(f"Processing {len(priority_indicators)} {priority.value} priority indicators")
+
+            # Process in smaller batches for high priority
+            batch_size = 10 if priority == ProcessingPriority.CRITICAL else 25
+
+            for batch in batch_indicators(priority_indicators, batch_size):
+                batch_results = process_indicator_batch(batch)
+                update_processing_stats(results['processing_stats'], batch_results)
+                results['priority_stats'][priority.value] += len(batch)
+
+    # Process standard and low priority indicators in larger batches
+    for priority in [ProcessingPriority.STANDARD, ProcessingPriority.LOW]:
+        if priority in priority_groups:
+            priority_indicators = priority_groups[priority]
+            logger.info(f"Processing {len(priority_indicators)} {priority.value} priority indicators")
+
+            batch_size = 50 if priority == ProcessingPriority.STANDARD else 100
+
+            for batch in batch_indicators(priority_indicators, batch_size):
+                batch_results = process_indicator_batch(batch)
+                update_processing_stats(results['processing_stats'], batch_results)
+                results['priority_stats'][priority.value] += len(batch)
+
+    # Calculate quality metrics
+    calculate_quality_metrics(results)
+
+    # Store processing results
+    store_processing_results(results)
+
+    logger.info(f"Priority-based processing completed: {results['processing_stats']['valid_indicators']} valid indicators")
+
+    return results
+
+
+def _group_indicators_by_priority(indicators: List[Dict[str, Any]]) -> Dict[ProcessingPriority, List[Dict[str, Any]]]:
+    """
+    Group indicators by processing priority
+
+    Args:
+        indicators: List of indicators to group
+
+    Returns:
+        Dictionary mapping priority to indicator lists
+    """
+    groups = {priority: [] for priority in ProcessingPriority}
+
+    for indicator in indicators:
+        # Use existing priority if set, otherwise analyze
+        priority_str = indicator.get('processing_priority')
+        if priority_str:
+            priority = ProcessingPriority(priority_str)
+        else:
+            priority = ThreatAnalyzer.analyze_threat_priority(indicator)
+
+        groups[priority].append(indicator)
+
+    # Log priority distribution
+    priority_counts = {p.value: len(groups[p]) for p in ProcessingPriority if groups[p]}
+    logger.info(f"Priority distribution: {priority_counts}")
+
+    return {p: indicators for p, indicators in groups.items() if indicators}
+
+
+def _extract_high_confidence_indicators(indicators: List[Dict[str, Any]], results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extract high-confidence indicators for enrichment
+
+    Args:
+        indicators: Original indicators
+        results: Processing results
+
+    Returns:
+        List of high-confidence indicators
+    """
+    high_confidence = []
+
+    for indicator in indicators:
+        confidence = indicator.get('confidence', 0)
+        quality_score = indicator.get('quality_score', 0)
+
+        # High confidence criteria
+        if (confidence >= 75 or
+            quality_score >= 80 or
+            indicator.get('threat_type') in ['malware', 'c2_infrastructure'] or
+            indicator.get('source_name') in ['government', 'commercial']):
+
+            high_confidence.append(indicator)
+
+    logger.info(f"Identified {len(high_confidence)} high-confidence indicators for enrichment")
+    return high_confidence
+
+
+def _detect_critical_threats(indicators: List[Dict[str, Any]], results: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Detect critical threats requiring immediate attention
+
+    Args:
+        indicators: Processed indicators
+        results: Processing results
+
+    Returns:
+        List of critical threat indicators
+    """
+    if not EVENT_INTEGRATION_AVAILABLE:
+        return []
+
+    critical_threats = ThreatAnalyzer.identify_critical_threats(indicators)
+
+    # Additional criteria for critical threats
+    additional_critical = []
+    for indicator in indicators:
+        confidence = indicator.get('confidence', 0)
+        correlations = indicator.get('correlations', [])
+
+        # Multiple correlations with high confidence = critical
+        if len(correlations) >= 3 and confidence >= 80:
+            additional_critical.append(indicator)
+
+        # APT or campaign indicators
+        labels = indicator.get('labels', [])
+        description = indicator.get('description', '').lower()
+        if ('apt' in description or
+            any('apt' in label.lower() for label in labels) or
+            'campaign' in description):
+            additional_critical.append(indicator)
+
+    # Combine and deduplicate
+    all_critical = critical_threats + additional_critical
+    seen_ids = set()
+    unique_critical = []
+
+    for threat in all_critical:
+        threat_id = threat.get('object_id')
+        if threat_id not in seen_ids:
+            seen_ids.add(threat_id)
+            unique_critical.append(threat)
+
+    logger.info(f"Detected {len(unique_critical)} critical threats")
+    return unique_critical
 
 
 def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
