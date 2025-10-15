@@ -1,18 +1,39 @@
 """
 OSINT Data Processor Lambda Function
+Phase 8A Enhanced: Integrated with advanced search engine capabilities
 
 This module processes collected threat intelligence data with focus on:
 - STIX 2.1 compliance validation and enrichment
 - Batch processing for cost optimization
 - Data quality scoring and filtering
 - Cross-source correlation and deduplication
+- Advanced multi-criteria search with fuzzy matching
+- Complex correlation analytics and result ranking
+- Multi-format export capabilities (JSON, CSV, STIX)
 
 Features:
 - Higher memory allocation (512MB) for intensive processing
 - Batch processing up to 100 indicators per invocation
 - STIX 2.1 validation and normalization
 - Confidence scoring and quality assessment
+- Advanced search engine with pattern recognition
+- Export engine with compression and optimization
 """
+
+# Import advanced search engine capabilities
+try:
+    from search_engine import (
+        AdvancedSearchEngine, SearchQuery, SearchType, SortOrder,
+        search_engine as global_search_engine
+    )
+    from export_engine import (
+        ThreatIntelExportEngine, ExportRequest, ExportFormat, CompressionType,
+        export_engine as global_export_engine
+    )
+    ADVANCED_SEARCH_AVAILABLE = True
+except ImportError:
+    logger.warning("Advanced search engine not available - using basic search")
+    ADVANCED_SEARCH_AVAILABLE = False
 
 import json
 import boto3
@@ -90,6 +111,20 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             },
             'errors': []
         }
+
+        # Enhanced processing modes including search and export
+        if 'action' in event:
+            action = event.get('action')
+
+            if action == 'search' and ADVANCED_SEARCH_AVAILABLE:
+                return handle_advanced_search(event)
+            elif action == 'export' and ADVANCED_SEARCH_AVAILABLE:
+                return handle_export_request(event)
+            elif action == 'process':
+                # Continue with standard processing
+                pass
+            else:
+                return create_response(400, {'error': f'Unsupported action: {action}'})
 
         # Determine processing mode based on event source
         if 'source' in event and event['source'] == 'aws:sqs':
@@ -722,6 +757,192 @@ def store_processing_results(results: Dict[str, Any]) -> None:
         )
     except Exception as e:
         logger.warning(f"Error storing processing results: {e}")
+
+
+def handle_advanced_search(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle advanced search requests using the integrated search engine
+
+    Args:
+        event: Search request event
+
+    Returns:
+        Search response with results
+    """
+    try:
+        logger.info("Processing advanced search request")
+
+        # Extract search parameters
+        search_params = event.get('search_params', {})
+
+        # Build search query
+        query = SearchQuery(
+            query_text=search_params.get('query', ''),
+            search_types=[SearchType(t) for t in search_params.get('search_types', ['composite'])],
+            filters=search_params.get('filters', {}),
+            sort_by=SortOrder(search_params.get('sort_by', 'relevance')),
+            page_size=search_params.get('page_size', 50),
+            cursor=search_params.get('cursor'),
+            fuzzy_enabled=search_params.get('fuzzy_enabled', True),
+            correlation_enabled=search_params.get('correlation_enabled', True),
+            include_enrichment=search_params.get('include_enrichment', True)
+        )
+
+        # Execute search
+        response = global_search_engine.search(query)
+
+        # Convert to JSON-serializable format
+        response_dict = {
+            'results': [
+                {
+                    'indicator': result.indicator,
+                    'relevance_score': result.relevance_score,
+                    'confidence_score': result.confidence_score,
+                    'match_type': result.match_type,
+                    'match_details': result.match_details,
+                    'correlations': result.correlations,
+                    'enrichment_data': result.enrichment_data
+                }
+                for result in response.results
+            ],
+            'total_count': response.total_count,
+            'page_info': response.page_info,
+            'query_stats': response.query_stats,
+            'execution_time_ms': response.execution_time_ms
+        }
+
+        return create_response(200, response_dict)
+
+    except Exception as e:
+        logger.error(f"Advanced search failed: {e}", exc_info=True)
+        return create_response(500, {
+            'error': 'Search failed',
+            'message': str(e) if ENVIRONMENT == 'dev' else 'Internal server error'
+        })
+
+
+def handle_export_request(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle export requests using the integrated export engine
+
+    Args:
+        event: Export request event
+
+    Returns:
+        Export response with download URL
+    """
+    try:
+        logger.info("Processing export request")
+
+        # Extract export parameters
+        export_params = event.get('export_params', {})
+
+        # Get data to export (could be from search results or direct query)
+        data = export_params.get('data', [])
+        if not data and 'search_query' in export_params:
+            # Execute search first to get data for export
+            search_response = handle_advanced_search({
+                'action': 'search',
+                'search_params': export_params['search_query']
+            })
+
+            if search_response['statusCode'] == 200:
+                search_data = json.loads(search_response['body'])
+                data = [result['indicator'] for result in search_data['results']]
+            else:
+                return search_response
+
+        # Build export request
+        export_request = ExportRequest(
+            format=ExportFormat(export_params.get('format', 'json')),
+            data=data,
+            filename=export_params.get('filename'),
+            compression=CompressionType(export_params.get('compression', 'none')),
+            include_metadata=export_params.get('include_metadata', True),
+            include_correlations=export_params.get('include_correlations', True),
+            include_enrichment=export_params.get('include_enrichment', False),
+            custom_fields=export_params.get('custom_fields'),
+            filter_criteria=export_params.get('filter_criteria')
+        )
+
+        # Execute export
+        result = global_export_engine.export_data(export_request)
+
+        # Build response
+        response_data = {
+            'success': result.success,
+            'export_id': result.export_id,
+            'download_url': result.download_url,
+            'error_message': result.error_message
+        }
+
+        if result.metadata:
+            response_data['metadata'] = {
+                'export_id': result.metadata.export_id,
+                'created_at': result.metadata.created_at,
+                'format': result.metadata.format,
+                'compression': result.metadata.compression,
+                'record_count': result.metadata.record_count,
+                'file_size_bytes': result.metadata.file_size_bytes,
+                'stix_version': result.metadata.stix_version
+            }
+
+        return create_response(200 if result.success else 400, response_data)
+
+    except Exception as e:
+        logger.error(f"Export request failed: {e}", exc_info=True)
+        return create_response(500, {
+            'error': 'Export failed',
+            'message': str(e) if ENVIRONMENT == 'dev' else 'Internal server error'
+        })
+
+
+def enhanced_search_indicators(search_query: str, search_options: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    """
+    Enhanced search function that uses advanced search engine if available
+
+    Args:
+        search_query: Search query string
+        search_options: Optional search configuration
+
+    Returns:
+        List of matching indicators
+    """
+    if not ADVANCED_SEARCH_AVAILABLE:
+        # Fallback to basic search
+        logger.info("Using basic search - advanced search engine not available")
+        components = extract_pattern_components(search_query)
+        results = []
+        for component in components:
+            results.extend(search_similar_patterns(component))
+        return results
+
+    try:
+        # Use advanced search engine
+        options = search_options or {}
+
+        query = SearchQuery(
+            query_text=search_query,
+            search_types=[SearchType.COMPOSITE],
+            filters=options.get('filters', {}),
+            sort_by=SortOrder(options.get('sort_by', 'relevance')),
+            page_size=options.get('page_size', 100),
+            fuzzy_enabled=options.get('fuzzy_enabled', True),
+            correlation_enabled=options.get('correlation_enabled', False),
+            include_enrichment=options.get('include_enrichment', False)
+        )
+
+        response = global_search_engine.search(query)
+        return [result.indicator for result in response.results]
+
+    except Exception as e:
+        logger.warning(f"Advanced search failed, falling back to basic search: {e}")
+        # Fallback to basic search
+        components = extract_pattern_components(search_query)
+        results = []
+        for component in components:
+            results.extend(search_similar_patterns(component))
+        return results
 
 
 def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
