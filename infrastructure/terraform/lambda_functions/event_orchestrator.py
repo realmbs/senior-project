@@ -43,6 +43,7 @@ THREAT_INTEL_TABLE = os.environ['THREAT_INTEL_TABLE']
 COLLECTOR_FUNCTION = os.environ.get('COLLECTOR_FUNCTION', f'threat-intel-collector-{ENVIRONMENT}')
 PROCESSOR_FUNCTION = os.environ.get('PROCESSOR_FUNCTION', f'threat-intel-processor-{ENVIRONMENT}')
 ENRICHMENT_FUNCTION = os.environ.get('ENRICHMENT_FUNCTION', f'threat-intel-enrichment-{ENVIRONMENT}')
+ANALYTICS_FUNCTION = os.environ.get('ANALYTICS_FUNCTION', f'threat-intel-analytics-{ENVIRONMENT}')
 
 # Processing Configuration
 REAL_TIME_CONFIDENCE_THRESHOLD = int(os.environ.get('REAL_TIME_CONFIDENCE_THRESHOLD', '85'))
@@ -65,8 +66,14 @@ class EventType(Enum):
     ENRICHMENT_STARTED = "enrichment.started"
     ENRICHMENT_COMPLETED = "enrichment.completed"
     ENRICHMENT_FAILED = "enrichment.failed"
+    ANALYTICS_STARTED = "analytics.started"
+    ANALYTICS_COMPLETED = "analytics.completed"
+    ANALYTICS_FAILED = "analytics.failed"
     THREAT_CRITICAL = "threat.critical"
     THREAT_HIGH_PRIORITY = "threat.high_priority"
+    ANOMALY_DETECTED = "analytics.anomaly_detected"
+    CAMPAIGN_DETECTED = "analytics.campaign_detected"
+    RISK_THRESHOLD_EXCEEDED = "analytics.risk_threshold_exceeded"
     SYSTEM_ERROR = "system.error"
     WORKFLOW_COMPLETED = "workflow.completed"
 
@@ -136,7 +143,12 @@ class EventOrchestrator:
             EventType.COLLECTION_COMPLETED: self._handle_collection_completed,
             EventType.PROCESSING_COMPLETED: self._handle_processing_completed,
             EventType.ENRICHMENT_COMPLETED: self._handle_enrichment_completed,
+            EventType.ANALYTICS_COMPLETED: self._handle_analytics_completed,
+            EventType.ANALYTICS_FAILED: self._handle_analytics_failed,
             EventType.THREAT_CRITICAL: self._handle_critical_threat,
+            EventType.ANOMALY_DETECTED: self._handle_anomaly_detected,
+            EventType.CAMPAIGN_DETECTED: self._handle_campaign_detected,
+            EventType.RISK_THRESHOLD_EXCEEDED: self._handle_risk_threshold_exceeded,
             EventType.SYSTEM_ERROR: self._handle_system_error,
         }
         self.workflow_manager = WorkflowManager()
@@ -309,8 +321,15 @@ class EventOrchestrator:
                 # Complete workflow
                 self.workflow_manager.complete_workflow(workflow_id)
 
-            # Trigger analysis or alerting if needed
-            self._trigger_final_analysis(enrichment_data, workflow_id)
+            # Check if analytics should be triggered
+            should_run_analytics = self._should_trigger_analytics(enrichment_data)
+
+            if should_run_analytics:
+                logger.info(f"Triggering analytics for workflow {workflow_id}")
+                self._trigger_analytics_processing(enrichment_data, workflow_id, event.correlation_id)
+            else:
+                # Trigger final analysis or alerting if needed
+                self._trigger_final_analysis(enrichment_data, workflow_id)
 
             return {
                 'status': 'workflow_completed',
@@ -676,6 +695,387 @@ class IntelligentBatchProcessor:
         data_size = sum(len(json.dumps(i)) for i in indicators) / (1024 * 1024)  # Convert to MB
 
         return int(base_memory + data_size * 2)  # 2x factor for processing overhead
+
+    def _should_trigger_analytics(self, enrichment_data: Dict[str, Any]) -> bool:
+        """Determine if analytics should be triggered based on enrichment data"""
+        # Trigger analytics for high-confidence threats or specific types
+        confidence = enrichment_data.get('confidence', 0)
+        threat_types = enrichment_data.get('labels', [])
+
+        # High confidence threats
+        if confidence >= 70:
+            return True
+
+        # Specific threat types that warrant analysis
+        critical_types = ['apt', 'malware', 'c2', 'campaign', 'backdoor', 'trojan']
+        if any(threat_type.lower() in ' '.join(threat_types).lower() for threat_type in critical_types):
+            return True
+
+        # Geographic enrichment present (for geographic analysis)
+        if enrichment_data.get('geolocation'):
+            return True
+
+        return False
+
+    def _trigger_analytics_processing(self, enrichment_data: Dict[str, Any], workflow_id: str, correlation_id: str) -> None:
+        """Trigger analytics processing via Lambda invocation"""
+        try:
+            # Prepare analytics payload
+            analytics_payload = {
+                'action': 'behavioral_analysis',
+                'parameters': {
+                    'workflow_id': workflow_id,
+                    'correlation_id': correlation_id,
+                    'enrichment_data': enrichment_data,
+                    'trigger_timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            }
+
+            # Invoke analytics Lambda function
+            response = lambda_client.invoke(
+                FunctionName=ANALYTICS_FUNCTION,
+                InvocationType='Event',  # Asynchronous invocation
+                Payload=json.dumps(analytics_payload)
+            )
+
+            logger.info(f"Analytics triggered for workflow {workflow_id}, response: {response['StatusCode']}")
+
+            # Emit analytics started event
+            analytics_event = ThreatIntelEvent(
+                event_type=EventType.ANALYTICS_STARTED,
+                source='event_orchestrator',
+                event_id=str(uuid.uuid4()),
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                data={
+                    'workflow_id': workflow_id,
+                    'correlation_id': correlation_id,
+                    'analytics_types': ['behavioral_analysis', 'risk_scoring'],
+                    'enrichment_data': enrichment_data
+                },
+                metadata={'trigger_reason': 'enrichment_completed'},
+                correlation_id=correlation_id
+            )
+
+            # Emit event for tracking
+            event_emitter = EventEmitter()
+            event_emitter.emit_event(analytics_event)
+
+        except Exception as e:
+            logger.error(f"Error triggering analytics processing: {str(e)}")
+            # Continue without analytics - not critical for workflow completion
+
+    def _handle_analytics_completed(self, event: ThreatIntelEvent) -> Dict[str, Any]:
+        """Handle analytics completion events"""
+        try:
+            analytics_data = event.data
+            workflow_id = analytics_data.get('workflow_id')
+            analytics_results = analytics_data.get('analytics_results', {})
+
+            logger.info(f"Analytics completed for workflow {workflow_id}")
+
+            # Process analytics findings
+            self._process_analytics_findings(analytics_results, event.correlation_id)
+
+            # Complete workflow
+            if workflow_id:
+                self.workflow_manager.complete_workflow(workflow_id)
+
+            return {
+                'status': 'analytics_completed',
+                'workflow_id': workflow_id,
+                'findings_processed': True
+            }
+
+        except Exception as e:
+            logger.error(f"Error handling analytics completed: {e}")
+            raise
+
+    def _handle_analytics_failed(self, event: ThreatIntelEvent) -> Dict[str, Any]:
+        """Handle analytics processing failures"""
+        try:
+            analytics_data = event.data
+            workflow_id = analytics_data.get('workflow_id')
+            error_details = analytics_data.get('error_details', {})
+
+            logger.warning(f"Analytics failed for workflow {workflow_id}: {error_details}")
+
+            # Analytics failure is not critical - complete workflow without analytics
+            if workflow_id:
+                self.workflow_manager.complete_workflow(workflow_id)
+
+            # Store analytics failure for monitoring
+            self._store_analytics_failure(workflow_id, error_details)
+
+            return {
+                'status': 'analytics_failed',
+                'workflow_id': workflow_id,
+                'workflow_completed': True
+            }
+
+        except Exception as e:
+            logger.error(f"Error handling analytics failure: {e}")
+            raise
+
+    def _handle_anomaly_detected(self, event: ThreatIntelEvent) -> Dict[str, Any]:
+        """Handle anomaly detection events"""
+        try:
+            anomaly_data = event.data
+            anomalies = anomaly_data.get('anomalies', [])
+            severity = anomaly_data.get('severity', 'unknown')
+
+            logger.warning(f"Anomaly detected - Severity: {severity}, Count: {len(anomalies)}")
+
+            # Send alerts for high-severity anomalies
+            if severity == 'high':
+                self._send_anomaly_alert(anomalies, event.correlation_id)
+
+            # Store anomaly for analysis
+            self._store_anomaly_detection(anomalies, severity)
+
+            return {
+                'status': 'anomaly_processed',
+                'severity': severity,
+                'anomaly_count': len(anomalies)
+            }
+
+        except Exception as e:
+            logger.error(f"Error handling anomaly detection: {e}")
+            raise
+
+    def _handle_campaign_detected(self, event: ThreatIntelEvent) -> Dict[str, Any]:
+        """Handle campaign detection events"""
+        try:
+            campaign_data = event.data
+            campaigns = campaign_data.get('campaigns', [])
+
+            logger.warning(f"Threat campaign detected: {len(campaigns)} campaigns identified")
+
+            # Send campaign alerts
+            for campaign in campaigns:
+                self._send_campaign_alert(campaign, event.correlation_id)
+
+            # Store campaign information
+            self._store_campaign_detection(campaigns)
+
+            return {
+                'status': 'campaign_processed',
+                'campaign_count': len(campaigns)
+            }
+
+        except Exception as e:
+            logger.error(f"Error handling campaign detection: {e}")
+            raise
+
+    def _handle_risk_threshold_exceeded(self, event: ThreatIntelEvent) -> Dict[str, Any]:
+        """Handle risk threshold exceeded events"""
+        try:
+            risk_data = event.data
+            risk_score = risk_data.get('risk_score', 0)
+            risk_level = risk_data.get('risk_level', 'unknown')
+            recommendations = risk_data.get('recommendations', [])
+
+            logger.warning(f"High risk threat detected - Score: {risk_score}, Level: {risk_level}")
+
+            # Send high-risk threat alert
+            self._send_high_risk_alert(risk_score, risk_level, recommendations, event.correlation_id)
+
+            # Store high-risk event
+            self._store_high_risk_event(risk_score, risk_level, recommendations)
+
+            return {
+                'status': 'high_risk_processed',
+                'risk_score': risk_score,
+                'risk_level': risk_level
+            }
+
+        except Exception as e:
+            logger.error(f"Error handling high risk event: {e}")
+            raise
+
+    def _process_analytics_findings(self, analytics_results: Dict[str, Any], correlation_id: str) -> None:
+        """Process analytics findings and emit appropriate events"""
+        try:
+            event_emitter = EventEmitter()
+
+            # Check for anomalies
+            if 'behavioral_analysis' in analytics_results:
+                behavioral_results = analytics_results['behavioral_analysis']
+                anomalies = behavioral_results.get('anomalies', [])
+
+                high_severity_anomalies = [a for a in anomalies if a.get('severity') == 'high']
+                if high_severity_anomalies:
+                    anomaly_event = ThreatIntelEvent(
+                        event_type=EventType.ANOMALY_DETECTED,
+                        source='analytics_engine',
+                        event_id=str(uuid.uuid4()),
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        data={
+                            'anomalies': high_severity_anomalies,
+                            'severity': 'high',
+                            'correlation_id': correlation_id
+                        },
+                        metadata={'detection_type': 'behavioral_analysis'},
+                        correlation_id=correlation_id
+                    )
+                    event_emitter.emit_event(anomaly_event)
+
+            # Check for campaign detection
+            if 'correlation_analysis' in analytics_results:
+                correlation_results = analytics_results['correlation_analysis']
+                campaigns = correlation_results.get('identified_campaigns', [])
+
+                if campaigns:
+                    campaign_event = ThreatIntelEvent(
+                        event_type=EventType.CAMPAIGN_DETECTED,
+                        source='analytics_engine',
+                        event_id=str(uuid.uuid4()),
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        data={
+                            'campaigns': campaigns,
+                            'correlation_id': correlation_id
+                        },
+                        metadata={'detection_method': 'correlation_analysis'},
+                        correlation_id=correlation_id
+                    )
+                    event_emitter.emit_event(campaign_event)
+
+            # Check for high risk scores
+            if 'risk_scoring' in analytics_results:
+                risk_results = analytics_results['risk_scoring']
+                risk_score = risk_results.get('enhanced_risk_score', 0)
+
+                if risk_score >= 80:  # High risk threshold
+                    risk_event = ThreatIntelEvent(
+                        event_type=EventType.RISK_THRESHOLD_EXCEEDED,
+                        source='analytics_engine',
+                        event_id=str(uuid.uuid4()),
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        data={
+                            'risk_score': risk_score,
+                            'risk_level': risk_results.get('risk_level'),
+                            'recommendations': risk_results.get('recommendations', []),
+                            'correlation_id': correlation_id
+                        },
+                        metadata={'threshold': 80},
+                        correlation_id=correlation_id
+                    )
+                    event_emitter.emit_event(risk_event)
+
+        except Exception as e:
+            logger.error(f"Error processing analytics findings: {str(e)}")
+
+    def _store_analytics_failure(self, workflow_id: str, error_details: Dict[str, Any]) -> None:
+        """Store analytics failure details for monitoring"""
+        try:
+            cloudwatch.put_metric_data(
+                Namespace='ThreatIntel/Analytics',
+                MetricData=[
+                    {
+                        'MetricName': 'AnalyticsFailures',
+                        'Value': 1,
+                        'Unit': 'Count',
+                        'Dimensions': [
+                            {
+                                'Name': 'WorkflowId',
+                                'Value': workflow_id
+                            }
+                        ]
+                    }
+                ]
+            )
+            logger.warning(f"Analytics failure recorded for workflow {workflow_id}: {error_details}")
+        except Exception as e:
+            logger.error(f"Error storing analytics failure: {str(e)}")
+
+    def _send_anomaly_alert(self, anomalies: List[Dict], correlation_id: str) -> None:
+        """Send alert for detected anomalies"""
+        try:
+            # Implementation would send alerts via SNS, email, etc.
+            logger.warning(f"ALERT: High-severity anomalies detected - {len(anomalies)} anomalies (Correlation: {correlation_id})")
+        except Exception as e:
+            logger.error(f"Error sending anomaly alert: {str(e)}")
+
+    def _send_campaign_alert(self, campaign: Dict, correlation_id: str) -> None:
+        """Send alert for detected campaign"""
+        try:
+            campaign_name = campaign.get('name', 'Unknown')
+            threat_count = len(campaign.get('indicators', []))
+            logger.warning(f"ALERT: Threat campaign detected - {campaign_name} with {threat_count} indicators (Correlation: {correlation_id})")
+        except Exception as e:
+            logger.error(f"Error sending campaign alert: {str(e)}")
+
+    def _send_high_risk_alert(self, risk_score: float, risk_level: str, recommendations: List[str], correlation_id: str) -> None:
+        """Send alert for high-risk threats"""
+        try:
+            logger.warning(f"ALERT: High-risk threat detected - Score: {risk_score}, Level: {risk_level} (Correlation: {correlation_id})")
+            logger.info(f"Recommendations: {', '.join(recommendations[:3])}")
+        except Exception as e:
+            logger.error(f"Error sending high-risk alert: {str(e)}")
+
+    def _store_anomaly_detection(self, anomalies: List[Dict], severity: str) -> None:
+        """Store anomaly detection for analysis"""
+        try:
+            cloudwatch.put_metric_data(
+                Namespace='ThreatIntel/Analytics',
+                MetricData=[
+                    {
+                        'MetricName': 'AnomaliesDetected',
+                        'Value': len(anomalies),
+                        'Unit': 'Count',
+                        'Dimensions': [
+                            {
+                                'Name': 'Severity',
+                                'Value': severity
+                            }
+                        ]
+                    }
+                ]
+            )
+        except Exception as e:
+            logger.error(f"Error storing anomaly detection: {str(e)}")
+
+    def _store_campaign_detection(self, campaigns: List[Dict]) -> None:
+        """Store campaign detection for analysis"""
+        try:
+            cloudwatch.put_metric_data(
+                Namespace='ThreatIntel/Analytics',
+                MetricData=[
+                    {
+                        'MetricName': 'CampaignsDetected',
+                        'Value': len(campaigns),
+                        'Unit': 'Count'
+                    }
+                ]
+            )
+        except Exception as e:
+            logger.error(f"Error storing campaign detection: {str(e)}")
+
+    def _store_high_risk_event(self, risk_score: float, risk_level: str, recommendations: List[str]) -> None:
+        """Store high-risk event for analysis"""
+        try:
+            cloudwatch.put_metric_data(
+                Namespace='ThreatIntel/Analytics',
+                MetricData=[
+                    {
+                        'MetricName': 'HighRiskThreats',
+                        'Value': 1,
+                        'Unit': 'Count',
+                        'Dimensions': [
+                            {
+                                'Name': 'RiskLevel',
+                                'Value': risk_level
+                            }
+                        ]
+                    },
+                    {
+                        'MetricName': 'RiskScore',
+                        'Value': risk_score,
+                        'Unit': 'None'
+                    }
+                ]
+            )
+        except Exception as e:
+            logger.error(f"Error storing high-risk event: {str(e)}")
 
 
 class ErrorHandler:
