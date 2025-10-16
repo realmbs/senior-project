@@ -36,6 +36,10 @@ from botocore.exceptions import ClientError
 import time
 import difflib
 
+# Set up logging first
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 # Import existing search capabilities
 try:
     from search_engine import (
@@ -57,9 +61,7 @@ except ImportError:
     logger.warning("Event utilities not available - analytics will run standalone")
     EVENT_INTEGRATION_AVAILABLE = False
 
-# Configure logging
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+# Logger already configured above
 
 # AWS Service Clients
 dynamodb = boto3.resource('dynamodb')
