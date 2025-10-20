@@ -10,7 +10,7 @@
 
 output "api_gateway_url" {
   description = "Base URL of the deployed API Gateway"
-  value       = aws_api_gateway_deployment.main.invoke_url
+  value       = "https://${aws_api_gateway_rest_api.threat_intel_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.main.stage_name}"
   sensitive   = false
 }
 
@@ -39,10 +39,10 @@ output "api_stage_name" {
 output "api_endpoints" {
   description = "Map of available API endpoints for threat intelligence operations"
   value = {
-    base    = aws_api_gateway_deployment.main.invoke_url
-    collect = "${aws_api_gateway_deployment.main.invoke_url}/collect"
-    enrich  = "${aws_api_gateway_deployment.main.invoke_url}/enrich"
-    search  = "${aws_api_gateway_deployment.main.invoke_url}/search"
+    base    = "https://${aws_api_gateway_rest_api.threat_intel_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.main.stage_name}"
+    collect = "https://${aws_api_gateway_rest_api.threat_intel_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.main.stage_name}/collect"
+    enrich  = "https://${aws_api_gateway_rest_api.threat_intel_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.main.stage_name}/enrich"
+    search  = "https://${aws_api_gateway_rest_api.threat_intel_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.main.stage_name}/search"
   }
   sensitive = false
 }
@@ -115,7 +115,7 @@ output "frontend_urls" {
   description = "URLs for accessing the threat intelligence platform"
   value = {
     cloudfront = "https://${aws_cloudfront_distribution.frontend.domain_name}"
-    api_base   = aws_api_gateway_deployment.main.invoke_url
+    api_base   = "https://${aws_api_gateway_rest_api.threat_intel_api.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/${aws_api_gateway_stage.main.stage_name}"
   }
   sensitive = false
 }

@@ -50,6 +50,32 @@ resource "aws_dynamodb_table" "threat_intelligence" {
     type = "S"  # String - SHA-256 hash of threat pattern for deduplication
   }
 
+  # Additional attributes for Phase 8D enhanced GSIs
+  attribute {
+    name = "threat_type"
+    type = "S"  # String - Threat type classification (malware, phishing, c2, etc.)
+  }
+
+  attribute {
+    name = "risk_score"
+    type = "N"  # Number - Calculated risk score (0-100)
+  }
+
+  attribute {
+    name = "geographic_region"
+    type = "S"  # String - Geographic region for clustering (region:country format)
+  }
+
+  attribute {
+    name = "ioc_type"
+    type = "S"  # String - IOC type (ip, domain, url, hash, email)
+  }
+
+  attribute {
+    name = "last_modified"
+    type = "S"  # String - ISO 8601 timestamp for temporal analysis
+  }
+
   # -----------------------------------------------------------------------------
   # Global Secondary Index: Time-based queries
   # -----------------------------------------------------------------------------
@@ -83,6 +109,50 @@ resource "aws_dynamodb_table" "threat_intelligence" {
     name     = "pattern-hash-index"
     hash_key = "pattern_hash"
     projection_type = "KEYS_ONLY"  # Minimal projection for dedup checks
+  }
+
+  # -----------------------------------------------------------------------------
+  # Phase 8D Enhanced GSIs for Advanced Analytics and Search
+  # -----------------------------------------------------------------------------
+
+  # Global Secondary Index: Risk-based analytics queries
+  # Enables efficient queries by threat type and risk score
+  # Use case: "Get all high-risk malware indicators" or "Find critical threats by type"
+  global_secondary_index {
+    name     = "risk-analytics-index"
+    hash_key = "threat_type"
+    range_key = "risk_score"
+    projection_type = "ALL"  # Include all attributes for analytics
+  }
+
+  # Global Secondary Index: Geographic threat clustering
+  # Enables efficient geographic analysis and clustering
+  # Use case: "Find all threats in specific geographic regions" or "Cluster threats by location"
+  global_secondary_index {
+    name     = "geographic-index"
+    hash_key = "geographic_region"
+    range_key = "confidence"
+    projection_type = "ALL"  # Include all attributes for geographic analysis
+  }
+
+  # Global Secondary Index: IOC type and pattern analysis
+  # Enables efficient queries by IOC type with pattern matching
+  # Use case: "Get all domain indicators" or "Search specific IOC types with patterns"
+  global_secondary_index {
+    name     = "ioc-pattern-index"
+    hash_key = "ioc_type"
+    range_key = "pattern_hash"
+    projection_type = "ALL"  # Include all attributes for search operations
+  }
+
+  # Global Secondary Index: Temporal correlation analysis
+  # Enables efficient temporal analysis and behavioral correlation
+  # Use case: "Find indicators modified in time range" or "Temporal pattern analysis"
+  global_secondary_index {
+    name     = "temporal-correlation-index"
+    hash_key = "object_type"
+    range_key = "last_modified"
+    projection_type = "ALL"  # Include all attributes for correlation analysis
   }
 
   # Security and backup configuration

@@ -67,6 +67,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw_threat_data" {
     id     = "threat_intel_lifecycle"
     status = "Enabled"
 
+    filter {
+      prefix = ""
+    }
+
     # Transition to Infrequent Access after configured days
     transition {
       days          = var.s3_lifecycle_ia_days
@@ -161,6 +165,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "processed_threat_data" {
     id     = "processed_data_lifecycle"
     status = "Enabled"
 
+    filter {
+      prefix = ""
+    }
+
     transition {
       days          = var.s3_lifecycle_ia_days
       storage_class = "STANDARD_IA"
@@ -232,6 +240,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "frontend_hosting" {
   rule {
     id     = "frontend_lifecycle"
     status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
 
     # Keep current versions in Standard storage
     # Clean up old versions after 30 days

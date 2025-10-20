@@ -14,6 +14,11 @@ terraform {
 }
 
 # =============================================================================
+# Data Sources
+# =============================================================================
+data "aws_region" "current" {}
+
+# =============================================================================
 # API Gateway REST API
 # =============================================================================
 
@@ -62,10 +67,196 @@ resource "aws_api_gateway_resource" "search" {
 }
 
 # =============================================================================
-# API Gateway Methods
+# Phase 8D Enhancements: Request Validation and Models
 # =============================================================================
 
-# POST /collect method
+# Request models for validation
+resource "aws_api_gateway_model" "collect_request_model" {
+  rest_api_id  = aws_api_gateway_rest_api.threat_intel_api.id
+  name         = "CollectRequestModel"
+  content_type = "application/json"
+
+  schema = jsonencode({
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "required": ["source", "action"],
+    "properties": {
+      "source": {
+        "type": "string",
+        "enum": ["otx", "abuse_ch", "shodan", "manual"],
+        "description": "Source of threat intelligence collection"
+      },
+      "action": {
+        "type": "string",
+        "enum": ["collect", "manual_add"],
+        "description": "Collection action to perform"
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "feed_type": {"type": "string"},
+          "time_range": {"type": "string"},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 1000}
+        }
+      },
+      "indicators": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["type", "value"],
+          "properties": {
+            "type": {"type": "string", "enum": ["ip", "domain", "url", "hash", "email"]},
+            "value": {"type": "string", "minLength": 1, "maxLength": 2048},
+            "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+            "tags": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
+  })
+}
+
+resource "aws_api_gateway_model" "enrich_request_model" {
+  rest_api_id  = aws_api_gateway_rest_api.threat_intel_api.id
+  name         = "EnrichRequestModel"
+  content_type = "application/json"
+
+  schema = jsonencode({
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "required": ["observables", "enrichment_types"],
+    "properties": {
+      "observables": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 100,
+        "items": {
+          "type": "object",
+          "required": ["type", "value"],
+          "properties": {
+            "type": {"type": "string", "enum": ["ip", "domain", "url", "hash", "email"]},
+            "value": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        }
+      },
+      "enrichment_types": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string",
+          "enum": ["shodan", "whois", "geolocation", "dns", "reputation", "all"]
+        }
+      },
+      "options": {
+        "type": "object",
+        "properties": {
+          "include_historical": {"type": "boolean"},
+          "max_depth": {"type": "integer", "minimum": 1, "maximum": 5},
+          "cache_ttl": {"type": "integer", "minimum": 300, "maximum": 86400}
+        }
+      }
+    }
+  })
+}
+
+resource "aws_api_gateway_model" "search_response_model" {
+  rest_api_id  = aws_api_gateway_rest_api.threat_intel_api.id
+  name         = "SearchResponseModel"
+  content_type = "application/json"
+
+  schema = jsonencode({
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "required": ["results", "total_count", "query_info"],
+    "properties": {
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "indicator": {"type": "object"},
+            "relevance_score": {"type": "number", "minimum": 0, "maximum": 1},
+            "confidence_score": {"type": "integer", "minimum": 0, "maximum": 100},
+            "match_type": {"type": "string"},
+            "correlations": {"type": "array"}
+          }
+        }
+      },
+      "total_count": {"type": "integer", "minimum": 0},
+      "query_info": {
+        "type": "object",
+        "properties": {
+          "query_id": {"type": "string"},
+          "execution_time_ms": {"type": "integer"},
+          "cache_hit": {"type": "boolean"}
+        }
+      },
+      "pagination": {
+        "type": "object",
+        "properties": {
+          "current_page": {"type": "integer"},
+          "total_pages": {"type": "integer"},
+          "next_cursor": {"type": "string"}
+        }
+      }
+    }
+  })
+}
+
+resource "aws_api_gateway_model" "error_response_model" {
+  rest_api_id  = aws_api_gateway_rest_api.threat_intel_api.id
+  name         = "ErrorResponseModel"
+  content_type = "application/json"
+
+  schema = jsonencode({
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "type": "object",
+    "required": ["error", "message", "timestamp"],
+    "properties": {
+      "error": {
+        "type": "object",
+        "required": ["code", "type"],
+        "properties": {
+          "code": {"type": "string"},
+          "type": {"type": "string", "enum": ["VALIDATION_ERROR", "RATE_LIMIT_EXCEEDED", "INTERNAL_ERROR", "UNAUTHORIZED", "NOT_FOUND"]},
+          "details": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "message": {"type": "string"},
+      "timestamp": {"type": "string", "format": "date-time"},
+      "request_id": {"type": "string"},
+      "path": {"type": "string"}
+    }
+  })
+}
+
+# Request validators
+resource "aws_api_gateway_request_validator" "collect_validator" {
+  name                        = "collect-request-validator"
+  rest_api_id                = aws_api_gateway_rest_api.threat_intel_api.id
+  validate_request_body       = true
+  validate_request_parameters = true
+}
+
+resource "aws_api_gateway_request_validator" "enrich_validator" {
+  name                        = "enrich-request-validator"
+  rest_api_id                = aws_api_gateway_rest_api.threat_intel_api.id
+  validate_request_body       = true
+  validate_request_parameters = true
+}
+
+resource "aws_api_gateway_request_validator" "search_validator" {
+  name                        = "search-request-validator"
+  rest_api_id                = aws_api_gateway_rest_api.threat_intel_api.id
+  validate_request_body       = false
+  validate_request_parameters = true
+}
+
+# =============================================================================
+# API Gateway Methods with Enhanced Validation
+# =============================================================================
+
+# POST /collect method with Phase 8D enhancements
 resource "aws_api_gateway_method" "collect_post" {
   rest_api_id   = aws_api_gateway_rest_api.threat_intel_api.id
   resource_id   = aws_api_gateway_resource.collect.id
@@ -75,10 +266,18 @@ resource "aws_api_gateway_method" "collect_post" {
 
   request_parameters = {
     "method.request.header.Content-Type" = true
+    "method.request.header.X-Request-ID" = false
+    "method.request.header.X-Client-Version" = false
   }
+
+  request_models = {
+    "application/json" = aws_api_gateway_model.collect_request_model.name
+  }
+
+  request_validator_id = aws_api_gateway_request_validator.collect_validator.id
 }
 
-# POST /enrich method
+# POST /enrich method with Phase 8D enhancements
 resource "aws_api_gateway_method" "enrich_post" {
   rest_api_id   = aws_api_gateway_rest_api.threat_intel_api.id
   resource_id   = aws_api_gateway_resource.enrich.id
@@ -88,10 +287,18 @@ resource "aws_api_gateway_method" "enrich_post" {
 
   request_parameters = {
     "method.request.header.Content-Type" = true
+    "method.request.header.X-Request-ID" = false
+    "method.request.header.X-Client-Version" = false
   }
+
+  request_models = {
+    "application/json" = aws_api_gateway_model.enrich_request_model.name
+  }
+
+  request_validator_id = aws_api_gateway_request_validator.enrich_validator.id
 }
 
-# GET /search method
+# GET /search method with Phase 8D enhancements
 resource "aws_api_gateway_method" "search_get" {
   rest_api_id   = aws_api_gateway_rest_api.threat_intel_api.id
   resource_id   = aws_api_gateway_resource.search.id
@@ -100,11 +307,18 @@ resource "aws_api_gateway_method" "search_get" {
   api_key_required = true
 
   request_parameters = {
-    "method.request.querystring.query"     = false
-    "method.request.querystring.limit"     = false
-    "method.request.querystring.from_date" = false
-    "method.request.querystring.to_date"   = false
+    "method.request.querystring.query"        = false
+    "method.request.querystring.limit"        = false
+    "method.request.querystring.from_date"    = false
+    "method.request.querystring.to_date"      = false
+    "method.request.querystring.cursor"       = false
+    "method.request.querystring.sort_by"      = false
+    "method.request.querystring.include_enrichment" = false
+    "method.request.header.X-Request-ID"      = false
+    "method.request.header.X-Client-Version"  = false
   }
+
+  request_validator_id = aws_api_gateway_request_validator.search_validator.id
 }
 
 # =============================================================================
@@ -148,6 +362,212 @@ resource "aws_api_gateway_integration" "search_integration" {
   uri                    = var.lambda_invoke_arns["processor"]
 
   depends_on = [aws_api_gateway_method.search_get]
+}
+
+# =============================================================================
+# Phase 8D Enhancements: Method Responses and Response Transformation
+# =============================================================================
+
+# Method responses for /collect
+resource "aws_api_gateway_method_response" "collect_200" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.collect.id
+  http_method = aws_api_gateway_method.collect_post.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+    "method.response.header.X-Response-Time" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.search_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "collect_400" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.collect.id
+  http_method = aws_api_gateway_method.collect_post.http_method
+  status_code = "400"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "collect_429" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.collect.id
+  http_method = aws_api_gateway_method.collect_post.http_method
+  status_code = "429"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+    "method.response.header.Retry-After" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "collect_500" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.collect.id
+  http_method = aws_api_gateway_method.collect_post.http_method
+  status_code = "500"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+# Method responses for /enrich
+resource "aws_api_gateway_method_response" "enrich_200" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.enrich.id
+  http_method = aws_api_gateway_method.enrich_post.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+    "method.response.header.X-Response-Time" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.search_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "enrich_400" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.enrich.id
+  http_method = aws_api_gateway_method.enrich_post.http_method
+  status_code = "400"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "enrich_429" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.enrich.id
+  http_method = aws_api_gateway_method.enrich_post.http_method
+  status_code = "429"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+    "method.response.header.Retry-After" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "enrich_500" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.enrich.id
+  http_method = aws_api_gateway_method.enrich_post.http_method
+  status_code = "500"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+# Method responses for /search
+resource "aws_api_gateway_method_response" "search_200" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_get.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+    "method.response.header.X-Response-Time" = true
+    "method.response.header.X-Cache-Status" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.search_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "search_400" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_get.http_method
+  status_code = "400"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "search_429" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_get.http_method
+  status_code = "429"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+    "method.response.header.Retry-After" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
+}
+
+resource "aws_api_gateway_method_response" "search_500" {
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_get.http_method
+  status_code = "500"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+    "method.response.header.X-Request-ID" = true
+  }
+
+  response_models = {
+    "application/json" = aws_api_gateway_model.error_response_model.name
+  }
 }
 
 # =============================================================================
