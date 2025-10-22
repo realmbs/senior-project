@@ -60,7 +60,7 @@ variable "node_type" {
   type        = string
   default     = "cache.t3.micro"
   validation {
-    condition = can(regex("^cache\\.", var.node_type))
+    condition     = can(regex("^cache\\.", var.node_type))
     error_message = "Node type must be a valid ElastiCache instance type starting with 'cache.'."
   }
 }
@@ -80,7 +80,7 @@ variable "redis_family" {
   type        = string
   default     = "redis7.x"
   validation {
-    condition = can(regex("^redis[0-9]\\.", var.redis_family))
+    condition     = can(regex("^redis[0-9]\\.", var.redis_family))
     error_message = "Redis family must be in format 'redisX.x' (e.g., 'redis7.x')."
   }
 }
@@ -161,7 +161,7 @@ variable "snapshot_window" {
   type        = string
   default     = "03:00-05:00"
   validation {
-    condition = can(regex("^([0-1]?[0-9]|2[0-3]):[0-5][0-9]-([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", var.snapshot_window))
+    condition     = can(regex("^([0-1]?[0-9]|2[0-3]):[0-5][0-9]-([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", var.snapshot_window))
     error_message = "Snapshot window must be in format 'HH:MM-HH:MM' (24-hour UTC)."
   }
 }
@@ -171,7 +171,7 @@ variable "maintenance_window" {
   type        = string
   default     = "sun:05:00-sun:07:00"
   validation {
-    condition = can(regex("^(sun|mon|tue|wed|thu|fri|sat):[0-2][0-9]:[0-5][0-9]-(sun|mon|tue|wed|thu|fri|sat):[0-2][0-9]:[0-5][0-9]$", var.maintenance_window))
+    condition     = can(regex("^(sun|mon|tue|wed|thu|fri|sat):[0-2][0-9]:[0-5][0-9]-(sun|mon|tue|wed|thu|fri|sat):[0-2][0-9]:[0-5][0-9]$", var.maintenance_window))
     error_message = "Maintenance window must be in format 'ddd:HH:MM-ddd:HH:MM' (UTC)."
   }
 }
@@ -227,7 +227,7 @@ variable "log_retention_days" {
   type        = number
   default     = 7
   validation {
-    condition = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.log_retention_days)
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.log_retention_days)
     error_message = "Log retention days must be a valid CloudWatch retention period."
   }
 }

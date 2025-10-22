@@ -154,16 +154,16 @@ output "redis_port_ssm_parameter_name" {
 output "redis_connection_info" {
   description = "Complete Redis connection information for Lambda functions"
   value = {
-    endpoint                  = aws_elasticache_replication_group.redis_cluster.configuration_endpoint_address
-    primary_endpoint         = aws_elasticache_replication_group.redis_cluster.primary_endpoint_address
-    port                     = var.redis_port
-    auth_token_secret_arn    = var.auth_token_enabled ? aws_secretsmanager_secret.redis_auth_token[0].arn : null
-    security_group_id        = aws_security_group.redis_sg.id
-    parameter_group_name     = aws_elasticache_parameter_group.redis_params.name
-    encryption_at_rest       = var.encryption_at_rest_enabled
-    encryption_in_transit    = var.encryption_in_transit_enabled
-    multi_az                 = var.multi_az_enabled
-    automatic_failover       = var.automatic_failover_enabled
+    endpoint              = aws_elasticache_replication_group.redis_cluster.configuration_endpoint_address
+    primary_endpoint      = aws_elasticache_replication_group.redis_cluster.primary_endpoint_address
+    port                  = var.redis_port
+    auth_token_secret_arn = var.auth_token_enabled ? aws_secretsmanager_secret.redis_auth_token[0].arn : null
+    security_group_id     = aws_security_group.redis_sg.id
+    parameter_group_name  = aws_elasticache_parameter_group.redis_params.name
+    encryption_at_rest    = var.encryption_at_rest_enabled
+    encryption_in_transit = var.encryption_in_transit_enabled
+    multi_az              = var.multi_az_enabled
+    automatic_failover    = var.automatic_failover_enabled
   }
   sensitive = false
 }
@@ -174,13 +174,13 @@ output "redis_connection_info" {
 output "lambda_environment_variables" {
   description = "Environment variables for Lambda functions to use Redis caching"
   value = {
-    REDIS_CLUSTER_ENDPOINT          = aws_elasticache_replication_group.redis_cluster.configuration_endpoint_address
-    REDIS_PRIMARY_ENDPOINT          = aws_elasticache_replication_group.redis_cluster.primary_endpoint_address
-    REDIS_PORT                      = tostring(var.redis_port)
-    REDIS_AUTH_TOKEN_SECRET_ARN     = var.auth_token_enabled ? aws_secretsmanager_secret.redis_auth_token[0].arn : ""
-    ENABLE_CACHE_COMPRESSION        = "true"
-    CACHE_KEY_PREFIX               = "${var.project_name}-${var.environment}"
-    REDIS_ENCRYPTION_IN_TRANSIT    = tostring(var.encryption_in_transit_enabled)
+    REDIS_CLUSTER_ENDPOINT      = aws_elasticache_replication_group.redis_cluster.configuration_endpoint_address
+    REDIS_PRIMARY_ENDPOINT      = aws_elasticache_replication_group.redis_cluster.primary_endpoint_address
+    REDIS_PORT                  = tostring(var.redis_port)
+    REDIS_AUTH_TOKEN_SECRET_ARN = var.auth_token_enabled ? aws_secretsmanager_secret.redis_auth_token[0].arn : ""
+    ENABLE_CACHE_COMPRESSION    = "true"
+    CACHE_KEY_PREFIX            = "${var.project_name}-${var.environment}"
+    REDIS_ENCRYPTION_IN_TRANSIT = tostring(var.encryption_in_transit_enabled)
   }
   sensitive = false
 }
@@ -191,13 +191,13 @@ output "lambda_environment_variables" {
 output "cache_monitoring_info" {
   description = "Information for cache monitoring and metrics"
   value = {
-    cluster_id              = aws_elasticache_replication_group.redis_cluster.id
-    log_group_name          = aws_cloudwatch_log_group.redis_logs.name
-    parameter_group_name    = aws_elasticache_parameter_group.redis_params.name
-    subnet_group_name       = aws_elasticache_subnet_group.redis_subnet_group.name
-    security_group_id       = aws_security_group.redis_sg.id
-    alarms_enabled          = var.enable_cloudwatch_alarms
-    auto_scaling_enabled    = var.enable_auto_scaling
+    cluster_id           = aws_elasticache_replication_group.redis_cluster.id
+    log_group_name       = aws_cloudwatch_log_group.redis_logs.name
+    parameter_group_name = aws_elasticache_parameter_group.redis_params.name
+    subnet_group_name    = aws_elasticache_subnet_group.redis_subnet_group.name
+    security_group_id    = aws_security_group.redis_sg.id
+    alarms_enabled       = var.enable_cloudwatch_alarms
+    auto_scaling_enabled = var.enable_auto_scaling
   }
   sensitive = false
 }
@@ -208,12 +208,12 @@ output "cache_monitoring_info" {
 output "cost_optimization_info" {
   description = "Information for cost optimization and monitoring"
   value = {
-    node_type                    = var.node_type
-    num_cache_nodes             = var.num_cache_nodes
-    snapshot_retention_limit    = var.snapshot_retention_limit
-    log_retention_days          = var.log_retention_days
-    auto_minor_version_upgrade  = var.auto_minor_version_upgrade
-    encryption_enabled          = var.encryption_at_rest_enabled && var.encryption_in_transit_enabled
+    node_type                  = var.node_type
+    num_cache_nodes            = var.num_cache_nodes
+    snapshot_retention_limit   = var.snapshot_retention_limit
+    log_retention_days         = var.log_retention_days
+    auto_minor_version_upgrade = var.auto_minor_version_upgrade
+    encryption_enabled         = var.encryption_at_rest_enabled && var.encryption_in_transit_enabled
     multi_az_enabled           = var.multi_az_enabled
   }
   sensitive = false

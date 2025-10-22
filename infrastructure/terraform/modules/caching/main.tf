@@ -51,7 +51,7 @@ resource "aws_elasticache_parameter_group" "redis_params" {
   # Enable keyspace notifications for cache invalidation
   parameter {
     name  = "notify-keyspace-events"
-    value = "Ex"  # Notify on key expiration events
+    value = "Ex" # Notify on key expiration events
   }
 
   tags = merge(var.tags, {
@@ -101,18 +101,18 @@ resource "aws_security_group" "redis_sg" {
 # ElastiCache Replication Group (Redis Cluster)
 # -----------------------------------------------------------------------------
 resource "aws_elasticache_replication_group" "redis_cluster" {
-  replication_group_id       = "${var.project_name}-redis-${var.environment}"
-  description                = "Redis cluster for threat intelligence caching"
+  replication_group_id = "${var.project_name}-redis-${var.environment}"
+  description          = "Redis cluster for threat intelligence caching"
 
   # Node configuration
-  node_type                  = var.node_type
-  port                       = var.redis_port
-  parameter_group_name       = aws_elasticache_parameter_group.redis_params.name
+  node_type            = var.node_type
+  port                 = var.redis_port
+  parameter_group_name = aws_elasticache_parameter_group.redis_params.name
 
   # Cluster configuration
   num_cache_clusters         = var.num_cache_nodes
   automatic_failover_enabled = var.automatic_failover_enabled
-  multi_az_enabled          = var.multi_az_enabled
+  multi_az_enabled           = var.multi_az_enabled
 
   # Network and security
   subnet_group_name  = aws_elasticache_subnet_group.redis_subnet_group.name
@@ -120,13 +120,13 @@ resource "aws_elasticache_replication_group" "redis_cluster" {
 
   # Backup and maintenance
   snapshot_retention_limit = var.snapshot_retention_limit
-  snapshot_window         = var.snapshot_window
-  maintenance_window      = var.maintenance_window
+  snapshot_window          = var.snapshot_window
+  maintenance_window       = var.maintenance_window
 
   # Encryption
   at_rest_encryption_enabled = var.encryption_at_rest_enabled
   transit_encryption_enabled = var.encryption_in_transit_enabled
-  auth_token                = var.auth_token_enabled ? random_password.redis_auth_token[0].result : null
+  auth_token                 = var.auth_token_enabled ? random_password.redis_auth_token[0].result : null
 
   # Auto scaling
   auto_minor_version_upgrade = var.auto_minor_version_upgrade
@@ -153,7 +153,7 @@ resource "aws_elasticache_replication_group" "redis_cluster" {
 resource "random_password" "redis_auth_token" {
   count   = var.auth_token_enabled ? 1 : 0
   length  = 32
-  special = false  # Redis auth tokens don't support special characters
+  special = false # Redis auth tokens don't support special characters
 }
 
 # -----------------------------------------------------------------------------

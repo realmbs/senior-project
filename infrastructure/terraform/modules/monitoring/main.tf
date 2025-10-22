@@ -115,11 +115,6 @@ resource "aws_cloudwatch_dashboard" "system_overview" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name        = "${var.project_name}-system-overview-dashboard"
-    Environment = var.environment
-    Purpose     = "System-wide monitoring overview"
-  })
 }
 
 # -----------------------------------------------------------------------------
@@ -249,11 +244,6 @@ resource "aws_cloudwatch_dashboard" "threat_intelligence" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name        = "${var.project_name}-threat-intelligence-dashboard"
-    Environment = var.environment
-    Purpose     = "Threat intelligence specific monitoring"
-  })
 }
 
 # -----------------------------------------------------------------------------
@@ -384,11 +374,6 @@ resource "aws_cloudwatch_dashboard" "cost_performance" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name        = "${var.project_name}-cost-performance-dashboard"
-    Environment = var.environment
-    Purpose     = "Cost and performance optimization monitoring"
-  })
 }
 
 # -----------------------------------------------------------------------------
@@ -495,11 +480,6 @@ resource "aws_cloudwatch_dashboard" "security_compliance" {
     ]
   })
 
-  tags = merge(var.tags, {
-    Name        = "${var.project_name}-security-compliance-dashboard"
-    Environment = var.environment
-    Purpose     = "Security and compliance monitoring"
-  })
 }
 
 # -----------------------------------------------------------------------------
