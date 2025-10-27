@@ -201,9 +201,9 @@ resource "aws_secretsmanager_secret_version" "api_keys" {
 
   # JSON structure for API keys - Lambda functions parse this format
   secret_string = jsonencode({
-    otx_api_key      = var.otx_api_key
-    shodan_api_key   = var.shodan_api_key
-    abuse_ch_api_key = var.abuse_ch_api_key
+    OTX_API_KEY      = var.otx_api_key
+    SHODAN_API_KEY   = var.shodan_api_key
+    ABUSE_CH_API_KEY = var.abuse_ch_api_key
   })
 
   # Lifecycle rule to prevent accidental destruction of secret values
