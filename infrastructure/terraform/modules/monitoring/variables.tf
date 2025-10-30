@@ -53,29 +53,6 @@ variable "enrichment_function_name" {
   type        = string
 }
 
-variable "search_function_name" {
-  description = "Name of the search engine Lambda function"
-  type        = string
-  default     = ""
-}
-
-variable "analytics_function_name" {
-  description = "Name of the analytics engine Lambda function"
-  type        = string
-  default     = ""
-}
-
-variable "cache_manager_function_name" {
-  description = "Name of the cache manager Lambda function"
-  type        = string
-  default     = ""
-}
-
-variable "query_optimizer_function_name" {
-  description = "Name of the query optimizer Lambda function"
-  type        = string
-  default     = ""
-}
 
 # -----------------------------------------------------------------------------
 # Infrastructure Resource Names
