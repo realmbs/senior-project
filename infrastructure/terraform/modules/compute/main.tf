@@ -38,7 +38,7 @@ resource "aws_lambda_function" "threat_collector" {
   filename         = "${path.module}/lambda_deployment.zip"
   function_name    = "${var.project_name}-threat-collector-${var.environment}"
   role            = var.lambda_execution_role_arn
-  handler         = "collector.lambda_handler"
+  handler         = "build_correct.collector.lambda_handler"
   runtime         = "python3.11"
   timeout         = var.lambda_timeout
   memory_size     = var.collector_memory_size
@@ -86,7 +86,7 @@ resource "aws_lambda_function" "data_processor" {
   filename         = "${path.module}/lambda_deployment.zip"
   function_name    = "${var.project_name}-data-processor-${var.environment}"
   role            = var.lambda_execution_role_arn
-  handler         = "processor.lambda_handler"
+  handler         = "build_correct.processor.lambda_handler"
   runtime         = "python3.11"
   timeout         = var.lambda_timeout
   memory_size     = var.processor_memory_size
@@ -130,7 +130,7 @@ resource "aws_lambda_function" "osint_enrichment" {
   filename         = "${path.module}/lambda_deployment.zip"
   function_name    = "${var.project_name}-osint-enrichment-${var.environment}"
   role            = var.lambda_execution_role_arn
-  handler         = "enrichment.lambda_handler"
+  handler         = "build_correct.enrichment.lambda_handler"
   runtime         = "python3.11"
   timeout         = var.lambda_timeout
   memory_size     = var.enrichment_memory_size
