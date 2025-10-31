@@ -147,64 +147,68 @@ module "networking" {
 }
 
 # =============================================================================
-# Caching Module
+# Caching Module - DISABLED FOR STREAMLINED DEPLOYMENT
 # =============================================================================
 # Creates ElastiCache Redis cluster for performance optimization
+# REMOVED: For Phase 9A deployment simplification, caching temporarily disabled
+# Available in feature/complete-infrastructure-with-caching-monitoring branch
 
-# Get default VPC and subnets for caching module
-data "aws_vpc" "default" {
-  default = true
-}
+# # Get default VPC and subnets for caching module
+# data "aws_vpc" "default" {
+#   default = true
+# }
 
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
+# data "aws_subnets" "default" {
+#   filter {
+#     name   = "vpc-id"
+#     values = [data.aws_vpc.default.id]
+#   }
+# }
 
-module "caching" {
-  source = "../../modules/caching"
+# module "caching" {
+#   source = "../../modules/caching"
 
-  project_name = var.project_name
-  environment  = var.environment
+#   project_name = var.project_name
+#   environment  = var.environment
 
-  # Use default VPC for development
-  vpc_id             = data.aws_vpc.default.id
-  private_subnet_ids = data.aws_subnets.default.ids
-}
+#   # Use default VPC for development
+#   vpc_id             = data.aws_vpc.default.id
+#   private_subnet_ids = data.aws_subnets.default.ids
+# }
 
 # =============================================================================
-# Monitoring Module
+# Monitoring Module - DISABLED FOR STREAMLINED DEPLOYMENT
 # =============================================================================
 # Creates CloudWatch dashboards and comprehensive monitoring
+# REMOVED: For Phase 9A deployment simplification, monitoring temporarily disabled
+# Available in feature/complete-infrastructure-with-caching-monitoring branch
 
-module "monitoring" {
-  source = "../../modules/monitoring"
+# module "monitoring" {
+#   source = "../../modules/monitoring"
 
-  project_name = var.project_name
-  environment  = var.environment
+#   project_name = var.project_name
+#   environment  = var.environment
 
-  # Lambda function names
-  collector_function_name   = module.compute.lambda_function_names.collector
-  processor_function_name   = module.compute.lambda_function_names.processor
-  enrichment_function_name  = module.compute.lambda_function_names.enrichment
+#   # Lambda function names
+#   collector_function_name   = module.compute.lambda_function_names.collector
+#   processor_function_name   = module.compute.lambda_function_names.processor
+#   enrichment_function_name  = module.compute.lambda_function_names.enrichment
 
-  # Required infrastructure resource names
-  threat_intel_table_name = module.database.threat_intel_table_name
-  api_gateway_name       = "${var.project_name}-api-${var.environment}"
+#   # Required infrastructure resource names
+#   threat_intel_table_name = module.database.threat_intel_table_name
+#   api_gateway_name       = "${var.project_name}-api-${var.environment}"
 
-  # Optional additional resources
-  enrichment_cache_table_name = module.database.enrichment_cache_table_name
-  dedup_table_name           = module.database.dedup_table_name
+#   # Optional additional resources
+#   enrichment_cache_table_name = module.database.enrichment_cache_table_name
+#   dedup_table_name           = module.database.dedup_table_name
 
-  # S3 bucket names for monitoring
-  s3_bucket_names = [
-    module.storage.raw_data_bucket_name,
-    module.storage.processed_data_bucket_name,
-    module.storage.frontend_bucket_name
-  ]
-}
+#   # S3 bucket names for monitoring
+#   s3_bucket_names = [
+#     module.storage.raw_data_bucket_name,
+#     module.storage.processed_data_bucket_name,
+#     module.storage.frontend_bucket_name
+#   ]
+# }
 
 # =============================================================================
 # Local Values for Resource References
