@@ -78,10 +78,10 @@ variable "redis_port" {
 variable "redis_family" {
   description = "Redis parameter group family"
   type        = string
-  default     = "redis7.x"
+  default     = "redis7"
   validation {
-    condition     = can(regex("^redis[0-9]\\.", var.redis_family))
-    error_message = "Redis family must be in format 'redisX.x' (e.g., 'redis7.x')."
+    condition     = can(regex("^redis[0-9]", var.redis_family))
+    error_message = "Redis family must be in format 'redisX' (e.g., 'redis7')."
   }
 }
 

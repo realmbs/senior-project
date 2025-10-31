@@ -82,8 +82,8 @@ output "lambda_dlq_url" {
 output "lambda_deployment_package" {
   description = "Information about the Lambda deployment package"
   value = {
-    filename     = data.archive_file.lambda_zip.output_path
-    source_hash  = data.archive_file.lambda_zip.output_base64sha256
-    source_dir   = data.archive_file.lambda_zip.source_dir
+    filename     = "${path.module}/lambda_deployment.zip"
+    source_hash  = filebase64sha256("${path.module}/lambda_deployment.zip")
+    source_dir   = "../../lambda_functions"
   }
 }
