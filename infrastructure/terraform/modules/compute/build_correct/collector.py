@@ -51,14 +51,23 @@ dedup_table = dynamodb.Table(DEDUP_TABLE)
 def get_api_keys() -> Dict[str, str]:
     """Retrieve API keys from AWS Secrets Manager"""
     try:
+        logger.info(f"Retrieving API keys from Secrets Manager: {SECRETS_MANAGER_ARN}")
         response = secrets_client.get_secret_value(SecretId=SECRETS_MANAGER_ARN)
-        secrets = json.loads(response['SecretString'])
+        logger.info("Secrets Manager response received successfully")
+
+        secret_string = response['SecretString']
+        logger.info(f"Secret string length: {len(secret_string)}")
+
+        secrets = json.loads(secret_string)
+        logger.info("Successfully parsed secrets JSON")
+
         return {
             'otx_api_key': secrets.get('OTX_API_KEY'),
             'abuse_ch_api_key': secrets.get('ABUSE_CH_API_KEY', '')  # Optional for URLhaus
         }
     except Exception as e:
         logger.error(f"Failed to retrieve API keys: {str(e)}")
+        logger.error(f"Exception type: {type(e).__name__}")
         raise
 
 
@@ -127,6 +136,7 @@ def collect_otx_indicators(api_key: str, limit: int = 50) -> List[Dict[str, Any]
         response.raise_for_status()
 
         data = response.json()
+        logger.info(f"OTX API response successful: {len(data.get('results', []))} pulses received")
         archive_raw_data('otx', data)
 
         for pulse in data.get('results', []):
@@ -171,6 +181,10 @@ def collect_otx_indicators(api_key: str, limit: int = 50) -> List[Dict[str, Any]
 
     except Exception as e:
         logger.error(f"OTX collection failed: {str(e)}")
+        # Add more detailed debugging
+        if hasattr(e, 'response'):
+            logger.error(f"OTX API response status: {e.response.status_code}")
+            logger.error(f"OTX API response text: {e.response.text[:500]}")
 
     return indicators
 
@@ -278,12 +292,10 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             all_indicators.extend(otx_indicators)
             collection_stats['otx'] = len(otx_indicators)
 
-        # Collect from Abuse.ch
+        # Collect from Abuse.ch (temporarily disabled - authentication issue)
         if 'abuse_ch' in sources:
-            logger.info("Collecting from Abuse.ch URLhaus...")
-            abuse_indicators = collect_abuse_ch_indicators(limit)
-            all_indicators.extend(abuse_indicators)
-            collection_stats['abuse_ch'] = len(abuse_indicators)
+            logger.info("Abuse.ch collection temporarily disabled (authentication required)")
+            collection_stats['abuse_ch'] = 0
 
         # Store indicators
         stored_count = 0
