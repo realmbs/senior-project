@@ -1,11 +1,15 @@
 <script lang="ts">
 	import {
 		Search, Filter, Download, Eye, Shield, Globe,
-		Calendar, Clock, TrendingUp, AlertTriangle
+		Calendar, Clock, TrendingUp, AlertTriangle, Loader2
 	} from 'lucide-svelte';
+	import { ThreatIntelAPI } from '$lib/api/services';
+	import { onMount } from 'svelte';
 
 	let searchQuery = '';
 	let selectedFilter = 'all';
+	let isLoading = false;
+	let error: string | null = null;
 	let searchResults = [
 		{
 			id: 1,
