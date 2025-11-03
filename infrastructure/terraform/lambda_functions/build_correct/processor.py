@@ -165,36 +165,74 @@ def store_processed_indicator(indicator: Dict[str, Any]) -> bool:
 
 
 def search_indicators(query: Dict[str, Any]) -> Dict[str, Any]:
-    """Basic indicator search"""
+    """Basic indicator search using available DynamoDB indexes"""
     try:
-        # Simple exact match search for MVP
-        if 'ioc_value' in query:
+        items = []
+
+        # Search by IOC type
+        if 'ioc_type' in query:
             response = threat_intel_table.query(
-                IndexName='pattern-hash-index',
-                KeyConditionExpression=boto3.dynamodb.conditions.Key('ioc_value').eq(query['ioc_value']),
+                IndexName='ioc-pattern-index',
+                KeyConditionExpression=boto3.dynamodb.conditions.Key('ioc_type').eq(query['ioc_type']),
                 Limit=query.get('limit', 20)
             )
             items = response.get('Items', [])
 
+        # Search by source
         elif 'source' in query:
             response = threat_intel_table.query(
                 IndexName='source-index',
-                KeyConditionExpression=boto3.dynamodb.conditions.Key('source').eq(query['source']),
+                KeyConditionExpression=boto3.dynamodb.conditions.Key('source_name').eq(query['source']),
+                Limit=query.get('limit', 20)
+            )
+            items = response.get('Items', [])
+
+        # Search by threat type
+        elif 'threat_type' in query:
+            response = threat_intel_table.query(
+                IndexName='risk-analytics-index',
+                KeyConditionExpression=boto3.dynamodb.conditions.Key('threat_type').eq(query['threat_type']),
+                Limit=query.get('limit', 20)
+            )
+            items = response.get('Items', [])
+
+        # Search by geographic region
+        elif 'geographic_region' in query:
+            response = threat_intel_table.query(
+                IndexName='geographic-index',
+                KeyConditionExpression=boto3.dynamodb.conditions.Key('geographic_region').eq(query['geographic_region']),
                 Limit=query.get('limit', 20)
             )
             items = response.get('Items', [])
 
         else:
-            # Scan for general search (limited for MVP)
-            response = threat_intel_table.scan(
-                Limit=query.get('limit', 10)  # Very limited scan
-            )
+            # General scan (limited for MVP)
+            scan_filter = {}
+
+            # Add filter conditions for ioc_value if provided
+            if 'ioc_value' in query:
+                scan_filter['pattern'] = {
+                    'AttributeValueList': [f"*{query['ioc_value']}*"],
+                    'ComparisonOperator': 'CONTAINS'
+                }
+
+            if scan_filter:
+                response = threat_intel_table.scan(
+                    ScanFilter=scan_filter,
+                    Limit=query.get('limit', 10)
+                )
+            else:
+                response = threat_intel_table.scan(
+                    Limit=query.get('limit', 10)
+                )
             items = response.get('Items', [])
 
-        # Convert Decimal back to float for JSON serialization
+        # Convert Decimal and DynamoDB sets for JSON serialization
         def convert_decimals(obj):
             if isinstance(obj, Decimal):
                 return float(obj)
+            elif isinstance(obj, set):
+                return list(obj)  # Convert DynamoDB sets to lists
             elif isinstance(obj, dict):
                 return {k: convert_decimals(v) for k, v in obj.items()}
             elif isinstance(obj, list):
@@ -295,10 +333,34 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     try:
         logger.info(f"Starting threat intelligence processing - Environment: {ENVIRONMENT}")
 
-        # Parse request
-        if 'body' in event and event['body']:
-            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+        # Check if this is an API Gateway request
+        if 'httpMethod' in event:
+            # API Gateway request
+            http_method = event.get('httpMethod', 'POST')
+            path = event.get('path', '/')
+
+            if http_method == 'GET' and '/search' in path:
+                # Handle GET /search requests
+                query_params = event.get('queryStringParameters') or {}
+                body = {
+                    'action': 'search',
+                    'query': {
+                        'ioc_value': query_params.get('q'),
+                        'ioc_type': query_params.get('type'),
+                        'source': query_params.get('source'),
+                        'limit': int(query_params.get('limit', 20))
+                    }
+                }
+                # Remove None values from query
+                body['query'] = {k: v for k, v in body['query'].items() if v is not None}
+            else:
+                # POST request with body
+                if event.get('body'):
+                    body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+                else:
+                    body = {'action': 'process'}
         else:
+            # Direct Lambda invocation
             body = event
 
         action = body.get('action', 'process')
