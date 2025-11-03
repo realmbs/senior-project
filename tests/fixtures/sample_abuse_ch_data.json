@@ -1,0 +1,81 @@
+{
+  "query_status": "ok",
+  "data": [
+    {
+      "id": "1234567",
+      "urlhaus_reference": "https://urlhaus.abuse.ch/url/1234567/",
+      "url": "http://malicious-domain.com/malware.exe",
+      "url_status": "online",
+      "host": "malicious-domain.com",
+      "date_added": "2024-01-01 00:00:00 UTC",
+      "threat": "malware_download",
+      "blacklists": {
+        "spamhaus_dbl": "not listed",
+        "surbl": "not listed"
+      },
+      "reporter": "abuse_ch",
+      "larted": "true",
+      "takedown_time_seconds": null,
+      "tags": [
+        "exe",
+        "emotet",
+        "trojan"
+      ],
+      "payloads": [
+        {
+          "firstseen": "2024-01-01",
+          "filename": "malware.exe",
+          "file_type": "exe",
+          "response_size": "524288",
+          "response_md5": "d41d8cd98f00b204e9800998ecf8427e",
+          "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "urlhaus_download": "https://urlhaus-api.abuse.ch/v1/download/d41d8cd98f00b204e9800998ecf8427e/",
+          "signature": "Trojan.Generic",
+          "virustotal": {
+            "result": "75/75",
+            "percent": "100.00",
+            "link": "https://www.virustotal.com/gui/file/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/detection"
+          }
+        }
+      ]
+    },
+    {
+      "id": "1234568",
+      "urlhaus_reference": "https://urlhaus.abuse.ch/url/1234568/",
+      "url": "http://another-malicious.com/payload.bin",
+      "url_status": "offline",
+      "host": "another-malicious.com",
+      "date_added": "2024-01-01 01:00:00 UTC",
+      "threat": "malware_download",
+      "blacklists": {
+        "spamhaus_dbl": "listed",
+        "surbl": "listed"
+      },
+      "reporter": "abuse_ch",
+      "larted": "true",
+      "takedown_time_seconds": 3600,
+      "tags": [
+        "bin",
+        "banking_trojan",
+        "stealer"
+      ],
+      "payloads": [
+        {
+          "firstseen": "2024-01-01",
+          "filename": "payload.bin",
+          "file_type": "dll",
+          "response_size": "1048576",
+          "response_md5": "5d41402abc4b2a76b9719d911017c592",
+          "response_sha256": "2cf24dba4f21d4288094e9b2c6c3b9e43b3b8f5e9c7ae7d5d5c9f8e6d3b1a2c5",
+          "urlhaus_download": "https://urlhaus-api.abuse.ch/v1/download/5d41402abc4b2a76b9719d911017c592/",
+          "signature": "Banker.Generic",
+          "virustotal": {
+            "result": "68/75",
+            "percent": "90.67",
+            "link": "https://www.virustotal.com/gui/file/2cf24dba4f21d4288094e9b2c6c3b9e43b3b8f5e9c7ae7d5d5c9f8e6d3b1a2c5/detection"
+          }
+        }
+      ]
+    }
+  ]
+}

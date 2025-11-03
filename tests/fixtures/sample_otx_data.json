@@ -1,0 +1,64 @@
+{
+  "results": [
+    {
+      "id": "test-indicator-1",
+      "indicator": "192.168.1.100",
+      "type": "IPv4",
+      "title": "Malicious IP from OTX",
+      "description": "Known malicious IP address",
+      "pulse_info": {
+        "count": 1,
+        "pulses": [
+          {
+            "id": "test-pulse-1",
+            "name": "Test Threat Pulse",
+            "description": "Test threat intelligence data",
+            "created": "2024-01-01T00:00:00.000Z",
+            "modified": "2024-01-01T00:00:00.000Z",
+            "author_name": "test-author",
+            "tlp": "white",
+            "tags": ["malware", "c2"]
+          }
+        ]
+      },
+      "base_indicator": {
+        "id": "base-test-1",
+        "indicator": "192.168.1.100",
+        "type": "IPv4",
+        "title": "Test IP Indicator",
+        "description": "Test IP description",
+        "content": ""
+      }
+    },
+    {
+      "id": "test-indicator-2",
+      "indicator": "malicious-domain.com",
+      "type": "domain",
+      "title": "Malicious Domain from OTX",
+      "description": "Known malicious domain",
+      "pulse_info": {
+        "count": 1,
+        "pulses": [
+          {
+            "id": "test-pulse-2",
+            "name": "Domain Threat Pulse",
+            "description": "Domain threat intelligence",
+            "created": "2024-01-01T00:00:00.000Z",
+            "modified": "2024-01-01T00:00:00.000Z",
+            "author_name": "test-author",
+            "tlp": "white",
+            "tags": ["phishing", "malware"]
+          }
+        ]
+      },
+      "base_indicator": {
+        "id": "base-test-2",
+        "indicator": "malicious-domain.com",
+        "type": "domain",
+        "title": "Test Domain Indicator",
+        "description": "Test domain description",
+        "content": ""
+      }
+    }
+  ]
+}

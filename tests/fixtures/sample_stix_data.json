@@ -1,0 +1,54 @@
+{
+  "type": "bundle",
+  "id": "bundle--test-123",
+  "objects": [
+    {
+      "type": "indicator",
+      "spec_version": "2.1",
+      "id": "indicator--test-indicator-1",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "pattern": "[ipv4-addr:value = '192.168.1.100']",
+      "labels": ["malicious-activity"],
+      "confidence": 85,
+      "lang": "en",
+      "external_references": [
+        {
+          "source_name": "otx",
+          "external_id": "test-pulse-1",
+          "url": "https://otx.alienvault.com/pulse/test-pulse-1"
+        }
+      ],
+      "object_marking_refs": ["marking-definition--tlp:white"],
+      "x_threat_intel_platform": {
+        "source": "otx",
+        "collection_date": "2024-01-01T00:00:00.000Z",
+        "pattern_hash": "test-hash-1"
+      }
+    },
+    {
+      "type": "indicator",
+      "spec_version": "2.1",
+      "id": "indicator--test-indicator-2",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "pattern": "[domain-name:value = 'malicious-domain.com']",
+      "labels": ["malicious-activity"],
+      "confidence": 90,
+      "lang": "en",
+      "external_references": [
+        {
+          "source_name": "abuse_ch",
+          "external_id": "test-entry-1",
+          "url": "https://urlhaus.abuse.ch/url/test-entry-1"
+        }
+      ],
+      "object_marking_refs": ["marking-definition--tlp:white"],
+      "x_threat_intel_platform": {
+        "source": "abuse_ch",
+        "collection_date": "2024-01-01T00:00:00.000Z",
+        "pattern_hash": "test-hash-2"
+      }
+    }
+  ]
+}
