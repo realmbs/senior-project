@@ -9,11 +9,24 @@
 		Globe,
 		FileText,
 		Settings,
-		ChevronRight
+		ChevronRight,
+		Loader2,
+		AlertTriangle
 	} from 'lucide-svelte';
+	import { onMount } from 'svelte';
+	import {
+		systemStatusStore,
+		recentThreatsStore,
+		dashboardActions
+	} from '$lib/stores/dashboard';
 
 	// Current route - this would normally come from SvelteKit's page store
 	let currentRoute = '/';
+
+	// Load dashboard data on mount
+	onMount(() => {
+		dashboardActions.loadDashboard();
+	});
 
 	interface NavItem {
 		href: string;
@@ -37,6 +50,50 @@
 	const adminItems: NavItem[] = [
 		{ href: '/settings', label: 'Settings', icon: Settings },
 	];
+
+	// Helper function to get system status display info
+	function getSystemStatusDisplay(status: string) {
+		switch (status) {
+			case 'healthy':
+				return {
+					color: 'bg-status-online',
+					textColor: 'text-status-online',
+					label: 'Online'
+				};
+			case 'degraded':
+				return {
+					color: 'bg-status-degraded',
+					textColor: 'text-status-degraded',
+					label: 'Degraded'
+				};
+			default:
+				return {
+					color: 'bg-status-offline',
+					textColor: 'text-status-offline',
+					label: 'Offline'
+				};
+		}
+	}
+
+	// Helper function to calculate threat severity counts
+	function getThreatCounts(threats: any[]) {
+		if (!threats || threats.length === 0) {
+			return { critical: 0, high: 0, medium: 0, total: 0 };
+		}
+
+		const counts = threats.reduce((acc, threat) => {
+			const confidence = threat.confidence || 0;
+			if (confidence >= 90) acc.critical++;
+			else if (confidence >= 70) acc.high++;
+			else if (confidence >= 50) acc.medium++;
+			return acc;
+		}, { critical: 0, high: 0, medium: 0 });
+
+		return {
+			...counts,
+			total: threats.length
+		};
+	}
 </script>
 
 <aside class="sidebar">
@@ -85,60 +142,133 @@
 
 		<!-- System Status Card -->
 		<div class="mt-4 glass-tertiary rounded-lg p-3">
-			<h4 class="text-sm font-semibold text-slate-200 mb-3">System Health</h4>
-			<div class="space-y-2">
-				<div class="flex items-center justify-between">
-					<span class="text-xs text-slate-400">API Gateway</span>
-					<div class="flex items-center gap-2">
-						<div class="w-2 h-2 bg-status-online rounded-full"></div>
-						<span class="text-xs text-status-online font-medium">Online</span>
-					</div>
-				</div>
-				<div class="flex items-center justify-between">
-					<span class="text-xs text-slate-400">Lambda Functions</span>
-					<div class="flex items-center gap-2">
-						<div class="w-2 h-2 bg-status-online rounded-full"></div>
-						<span class="text-xs text-status-online font-medium">Healthy</span>
-					</div>
-				</div>
-				<div class="flex items-center justify-between">
-					<span class="text-xs text-slate-400">Database</span>
-					<div class="flex items-center gap-2">
-						<div class="w-2 h-2 bg-status-online rounded-full"></div>
-						<span class="text-xs text-status-online font-medium">Active</span>
-					</div>
-				</div>
-				<div class="flex items-center justify-between">
-					<span class="text-xs text-slate-400">Storage</span>
-					<div class="flex items-center gap-2">
-						<div class="w-2 h-2 bg-status-degraded rounded-full animate pulse"></div>
-						<span class="text-xs text-status-degraded font-medium">Sync</span>
-					</div>
-				</div>
+			<div class="flex items-center justify-between mb-3">
+				<h4 class="text-sm font-semibold text-slate-200">System Health</h4>
+				{#if $systemStatusStore.loading}
+					<Loader2 class="w-3 h-3 animate-spin text-slate-400" />
+				{/if}
 			</div>
+
+			{#if $systemStatusStore.loading}
+				<!-- Loading state -->
+				<div class="space-y-2">
+					{#each Array(4) as _, i}
+						<div class="flex items-center justify-between">
+							<div class="h-3 bg-slate-600 rounded w-16 animate-pulse"></div>
+							<div class="flex items-center gap-2">
+								<div class="w-2 h-2 bg-slate-600 rounded-full animate-pulse"></div>
+								<div class="h-3 bg-slate-600 rounded w-12 animate-pulse"></div>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else if $systemStatusStore.error}
+				<!-- Error state -->
+				<div class="flex items-center gap-2 text-threat-critical">
+					<AlertTriangle class="w-3 h-3" />
+					<span class="text-xs">Health check failed</span>
+				</div>
+			{:else if $systemStatusStore.data}
+				<!-- Loaded system status -->
+				<div class="space-y-2">
+					<!-- API Gateway -->
+					{#if $systemStatusStore.data.api_gateway}
+						{@const apiGatewayStatus = getSystemStatusDisplay($systemStatusStore.data.api_gateway)}
+						<div class="flex items-center justify-between">
+							<span class="text-xs text-slate-400">API Gateway</span>
+							<div class="flex items-center gap-2">
+								<div class="w-2 h-2 {apiGatewayStatus.color} rounded-full {$systemStatusStore.data.api_gateway === 'degraded' ? 'animate-pulse' : ''}"></div>
+								<span class="text-xs {apiGatewayStatus.textColor} font-medium">{apiGatewayStatus.label}</span>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Lambda Functions -->
+					{#if $systemStatusStore.data.lambda_functions}
+						{@const lambdaStatus = getSystemStatusDisplay($systemStatusStore.data.lambda_functions)}
+						<div class="flex items-center justify-between">
+							<span class="text-xs text-slate-400">Lambda Functions</span>
+							<div class="flex items-center gap-2">
+								<div class="w-2 h-2 {lambdaStatus.color} rounded-full {$systemStatusStore.data.lambda_functions === 'degraded' ? 'animate-pulse' : ''}"></div>
+								<span class="text-xs {lambdaStatus.textColor} font-medium">{lambdaStatus.label}</span>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Database -->
+					{#if $systemStatusStore.data.database}
+						{@const databaseStatus = getSystemStatusDisplay($systemStatusStore.data.database)}
+						<div class="flex items-center justify-between">
+							<span class="text-xs text-slate-400">Database</span>
+							<div class="flex items-center gap-2">
+								<div class="w-2 h-2 {databaseStatus.color} rounded-full {$systemStatusStore.data.database === 'degraded' ? 'animate-pulse' : ''}"></div>
+								<span class="text-xs {databaseStatus.textColor} font-medium">{databaseStatus.label}</span>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Storage -->
+					{#if $systemStatusStore.data.storage}
+						{@const storageStatus = getSystemStatusDisplay($systemStatusStore.data.storage)}
+						<div class="flex items-center justify-between">
+							<span class="text-xs text-slate-400">Storage</span>
+							<div class="flex items-center gap-2">
+								<div class="w-2 h-2 {storageStatus.color} rounded-full {$systemStatusStore.data.storage === 'degraded' ? 'animate-pulse' : ''}"></div>
+								<span class="text-xs {storageStatus.textColor} font-medium">{storageStatus.label}</span>
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Recent Threats Summary -->
 		<div class="mt-4 glass-tertiary rounded-lg p-3">
-			<h4 class="text-sm font-semibold text-slate-200 mb-3">Recent Threats</h4>
-			<div class="space-y-2">
-				<div class="flex items-center justify-between">
-					<span class="text-xs text-slate-400">Critical</span>
-					<span class="text-xs font-mono text-threat-critical font-bold">3</span>
-				</div>
-				<div class="flex items-center justify-between">
-					<span class="text-xs text-slate-400">High</span>
-					<span class="text-xs font-mono text-threat-high font-bold">12</span>
-				</div>
-				<div class="flex items-center justify-between">
-					<span class="text-xs text-slate-400">Medium</span>
-					<span class="text-xs font-mono text-threat-medium font-bold">47</span>
-				</div>
-				<div class="flex items-center justify-between border-t border-slate-700/30 pt-2 mt-2">
-					<span class="text-xs text-slate-400 font-medium">Total Today</span>
-					<span class="text-xs font-mono text-slate-200 font-bold">62</span>
-				</div>
+			<div class="flex items-center justify-between mb-3">
+				<h4 class="text-sm font-semibold text-slate-200">Recent Threats</h4>
+				{#if $recentThreatsStore.loading}
+					<Loader2 class="w-3 h-3 animate-spin text-slate-400" />
+				{/if}
 			</div>
+
+			{#if $recentThreatsStore.loading}
+				<!-- Loading state -->
+				<div class="space-y-2">
+					{#each Array(4) as _, i}
+						<div class="flex items-center justify-between">
+							<div class="h-3 bg-slate-600 rounded w-12 animate-pulse"></div>
+							<div class="h-3 bg-slate-600 rounded w-6 animate-pulse"></div>
+						</div>
+					{/each}
+				</div>
+			{:else if $recentThreatsStore.error}
+				<!-- Error state -->
+				<div class="flex items-center gap-2 text-threat-critical">
+					<AlertTriangle class="w-3 h-3" />
+					<span class="text-xs">Load failed</span>
+				</div>
+			{:else}
+				<!-- Loaded threat counts -->
+				{@const threatCounts = getThreatCounts($recentThreatsStore.data)}
+				<div class="space-y-2">
+					<div class="flex items-center justify-between">
+						<span class="text-xs text-slate-400">Critical</span>
+						<span class="text-xs font-mono text-threat-critical font-bold {threatCounts.critical > 0 ? 'animate-pulse' : ''}">{threatCounts.critical}</span>
+					</div>
+					<div class="flex items-center justify-between">
+						<span class="text-xs text-slate-400">High</span>
+						<span class="text-xs font-mono text-threat-high font-bold">{threatCounts.high}</span>
+					</div>
+					<div class="flex items-center justify-between">
+						<span class="text-xs text-slate-400">Medium</span>
+						<span class="text-xs font-mono text-threat-medium font-bold">{threatCounts.medium}</span>
+					</div>
+					<div class="flex items-center justify-between border-t border-slate-700/30 pt-2 mt-2">
+						<span class="text-xs text-slate-400 font-medium">Total Recent</span>
+						<span class="text-xs font-mono text-slate-200 font-bold">{threatCounts.total}</span>
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 </aside>
