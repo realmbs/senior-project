@@ -125,66 +125,181 @@ def archive_raw_data(source: str, data: Dict[str, Any]) -> None:
 
 
 def collect_otx_indicators(api_key: str, limit: int = 50) -> List[Dict[str, Any]]:
-    """Collect basic indicators from OTX"""
+    """Collect basic indicators from OTX with enhanced error handling and debugging"""
     indicators = []
-    try:
-        url = "https://otx.alienvault.com/api/v1/pulses/subscribed"
-        headers = {'X-OTX-API-KEY': api_key}
-        params = {'limit': min(limit, OTX_BATCH_SIZE)}
 
-        response = requests.get(url, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
+    # Enhanced headers to mimic browser requests
+    headers = {
+        'X-OTX-API-KEY': api_key,
+        'User-Agent': 'ThreatIntelPlatform/1.0 (AWS Lambda; Python/3.9)',
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache'
+    }
 
-        data = response.json()
-        logger.info(f"OTX API response successful: {len(data.get('results', []))} pulses received")
-        archive_raw_data('otx', data)
+    url = "https://otx.alienvault.com/api/v1/pulses/subscribed"
+    params = {'limit': min(limit, OTX_BATCH_SIZE)}
 
-        for pulse in data.get('results', []):
-            for indicator in pulse.get('indicators', []):
-                ioc_type = indicator.get('type', '').lower()
-                ioc_value = indicator.get('indicator', '').strip()
+    # Retry logic with exponential backoff
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            logger.info(f"OTX API attempt {attempt + 1}/{MAX_RETRIES + 1}")
+            logger.info(f"Request URL: {url}")
+            logger.info(f"Request params: {params}")
+            logger.info(f"Request headers: {dict(headers)}")
 
-                if not ioc_value or ioc_type not in ['IPv4', 'domain', 'hostname', 'URL']:
+            # Make request with enhanced configuration
+            response = requests.get(
+                url=url,
+                headers=headers,
+                params=params,
+                timeout=45,  # Increased timeout
+                verify=True,  # Ensure SSL verification
+                allow_redirects=True
+            )
+
+            # Log response details before processing
+            logger.info(f"OTX API response status: {response.status_code}")
+            logger.info(f"OTX API response headers: {dict(response.headers)}")
+            logger.info(f"OTX API response size: {len(response.content)} bytes")
+            logger.info(f"OTX API response encoding: {response.encoding}")
+
+            # Check response status
+            response.raise_for_status()
+
+            # Validate response content
+            content_type = response.headers.get('content-type', '').lower()
+            if 'application/json' not in content_type:
+                logger.warning(f"Unexpected content type: {content_type}")
+
+            # Check if response has content
+            if not response.content:
+                logger.error("OTX API returned empty response")
+                if attempt < MAX_RETRIES:
+                    wait_time = 2 ** attempt
+                    logger.info(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
                     continue
+                else:
+                    logger.error("All retry attempts failed - returning empty indicators")
+                    return indicators
 
-                # Create basic STIX 2.1 indicator
-                stix_indicator = {
-                    'id': f"indicator--{os.urandom(16).hex()}",
-                    'type': 'indicator',
-                    'spec_version': '2.1',
-                    'pattern': f"[{get_stix_pattern_type(ioc_type)}:value = '{ioc_value}']",
-                    'labels': ['malicious-activity'],
-                    'created': datetime.now(timezone.utc).isoformat(),
-                    'modified': datetime.now(timezone.utc).isoformat(),
-                    'source': 'otx',
-                    'confidence': 75,  # Default confidence
-                    'ioc_value': ioc_value,
-                    'ioc_type': ioc_type
-                }
+            # Log first 500 characters of response for debugging
+            response_preview = response.text[:500] if response.text else "No text content"
+            logger.info(f"OTX API response preview: {response_preview}")
 
-                # Add metadata
-                pattern_hash = create_pattern_hash(ioc_value, ioc_type)
-                if not check_duplicate(pattern_hash):
-                    indicator_record = {
-                        'indicator_id': stix_indicator['id'],
-                        'pattern_hash': pattern_hash,
+            # Parse JSON response
+            try:
+                data = response.json()
+                logger.info(f"Successfully parsed JSON response")
+                logger.info(f"OTX API response successful: {len(data.get('results', []))} pulses received")
+            except json.JSONDecodeError as json_error:
+                logger.error(f"JSON parsing failed: {str(json_error)}")
+                logger.error(f"Response content type: {response.headers.get('content-type')}")
+                logger.error(f"Raw response content: {response.text[:1000]}")
+
+                if attempt < MAX_RETRIES:
+                    wait_time = 2 ** attempt
+                    logger.info(f"JSON parse error - retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error("All retry attempts failed due to JSON parsing errors")
+                    return indicators
+
+            # Archive raw data for analysis
+            archive_raw_data('otx', data)
+
+            # Process the pulses and indicators
+            for pulse in data.get('results', []):
+                for indicator in pulse.get('indicators', []):
+                    ioc_type = indicator.get('type', '').lower()
+                    ioc_value = indicator.get('indicator', '').strip()
+
+                    if not ioc_value or ioc_type not in ['IPv4', 'domain', 'hostname', 'URL']:
+                        continue
+
+                    # Create basic STIX 2.1 indicator
+                    stix_indicator = {
+                        'id': f"indicator--{os.urandom(16).hex()}",
+                        'type': 'indicator',
+                        'spec_version': '2.1',
+                        'pattern': f"[{get_stix_pattern_type(ioc_type)}:value = '{ioc_value}']",
+                        'labels': ['malicious-activity'],
+                        'created': datetime.now(timezone.utc).isoformat(),
+                        'modified': datetime.now(timezone.utc).isoformat(),
                         'source': 'otx',
-                        'ioc_type': ioc_type,
+                        'confidence': 75,  # Default confidence
                         'ioc_value': ioc_value,
-                        'confidence': 75,
-                        'created_at': datetime.now(timezone.utc).isoformat(),
-                        'stix_data': stix_indicator,
-                        'pulse_name': pulse.get('name', ''),
-                        'threat_type': 'unknown'
+                        'ioc_type': ioc_type
                     }
-                    indicators.append(indicator_record)
 
-    except Exception as e:
-        logger.error(f"OTX collection failed: {str(e)}")
-        # Add more detailed debugging
-        if hasattr(e, 'response'):
-            logger.error(f"OTX API response status: {e.response.status_code}")
-            logger.error(f"OTX API response text: {e.response.text[:500]}")
+                    # Add metadata
+                    pattern_hash = create_pattern_hash(ioc_value, ioc_type)
+                    if not check_duplicate(pattern_hash):
+                        indicator_record = {
+                            'indicator_id': stix_indicator['id'],
+                            'pattern_hash': pattern_hash,
+                            'source': 'otx',
+                            'ioc_type': ioc_type,
+                            'ioc_value': ioc_value,
+                            'confidence': 75,
+                            'created_at': datetime.now(timezone.utc).isoformat(),
+                            'stix_data': stix_indicator,
+                            'pulse_name': pulse.get('name', ''),
+                            'threat_type': 'unknown'
+                        }
+                        indicators.append(indicator_record)
+
+            # Success - break out of retry loop
+            logger.info(f"OTX collection successful: {len(indicators)} new indicators")
+            break
+
+        except requests.exceptions.Timeout as e:
+            logger.error(f"OTX API timeout on attempt {attempt + 1}: {str(e)}")
+            if attempt < MAX_RETRIES:
+                wait_time = 2 ** attempt
+                logger.info(f"Timeout - retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logger.error("All retry attempts failed due to timeouts")
+
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"OTX API connection error on attempt {attempt + 1}: {str(e)}")
+            if attempt < MAX_RETRIES:
+                wait_time = 2 ** attempt
+                logger.info(f"Connection error - retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logger.error("All retry attempts failed due to connection errors")
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"OTX API HTTP error on attempt {attempt + 1}: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"HTTP status: {e.response.status_code}")
+                logger.error(f"HTTP response: {e.response.text[:500]}")
+
+            # Don't retry on 4xx errors (client errors)
+            if hasattr(e, 'response') and e.response is not None and 400 <= e.response.status_code < 500:
+                logger.error("Client error - not retrying")
+                break
+            elif attempt < MAX_RETRIES:
+                wait_time = 2 ** attempt
+                logger.info(f"Server error - retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logger.error("All retry attempts failed due to HTTP errors")
+
+        except Exception as e:
+            logger.error(f"OTX collection unexpected error on attempt {attempt + 1}: {str(e)}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            if attempt < MAX_RETRIES:
+                wait_time = 2 ** attempt
+                logger.info(f"Unexpected error - retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                logger.error("All retry attempts failed due to unexpected errors")
 
     return indicators
 
