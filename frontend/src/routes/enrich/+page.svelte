@@ -4,139 +4,61 @@
 		Shield, Eye, Clock, TrendingUp, Database,
 		CheckCircle, AlertTriangle, RefreshCw, Loader2
 	} from 'lucide-svelte';
-	import { ThreatIntelAPI } from '$lib/api/services';
-	import type { EnrichmentRequest, EnrichmentResponse } from '$lib/api/services';
 	import { onMount } from 'svelte';
+	import { enrichmentStore, enrichmentActions } from '$lib/stores/enrichment';
 
 	let enrichmentInput = '';
 	let enrichmentType = 'ip';
 	let selectedServices = ['shodan', 'dns', 'geolocation'];
-	let isLoading = false;
-	let error: string | null = null;
-	let enrichmentResults: any[] = [];
-	let enrichmentStats = {
-		iocsEnriched: 0,
-		inQueue: 0,
-		successRate: 0,
-		activeServices: 0
-	};
 
-	const enrichmentServices = [
-		{
-			id: 'shodan',
-			name: 'Shodan',
-			description: 'Internet-connected device intelligence',
-			enabled: true,
-			apiKey: 'configured',
-			cost: '$0.02/query'
-		},
-		{
-			id: 'dns',
-			name: 'DNS Resolution',
-			description: 'Domain name system lookups',
-			enabled: true,
-			apiKey: 'free',
-			cost: 'Free'
-		},
-		{
-			id: 'geolocation',
-			name: 'IP Geolocation',
-			description: 'Geographic location data',
-			enabled: true,
-			apiKey: 'configured',
-			cost: '$0.01/query'
-		},
-		{
-			id: 'virustotal',
-			name: 'VirusTotal',
-			description: 'File and URL analysis',
-			enabled: false,
-			apiKey: 'required',
-			cost: 'Free tier'
-		}
-	];
-
-	const enrichmentQueue = [
-		{
-			id: 1,
-			indicator: '192.168.1.100',
-			type: 'ip',
-			status: 'processing',
-			services: ['shodan', 'geolocation'],
-			progress: 75,
-			startTime: '2 minutes ago'
-		},
-		{
-			id: 2,
-			indicator: 'evil-domain.com',
-			type: 'domain',
-			status: 'completed',
-			services: ['dns', 'geolocation'],
-			progress: 100,
-			startTime: '5 minutes ago'
-		},
-		{
-			id: 3,
-			indicator: 'a1b2c3d4e5f6...',
-			type: 'hash',
-			status: 'pending',
-			services: ['virustotal'],
-			progress: 0,
-			startTime: 'Queued'
-		}
-	];
+	// Reactive state from store
+	$: isLoading = $enrichmentStore.loading.enrichment;
+	$: error = $enrichmentStore.errors.enrichment;
 
 	onMount(async () => {
-		await loadEnrichmentStats();
+		await enrichmentActions.loadStats();
 	});
-
-	async function loadEnrichmentStats() {
-		enrichmentStats = {
-			iocsEnriched: Math.floor(Math.random() * 1000) + 400,
-			inQueue: Math.floor(Math.random() * 50) + 10,
-			successRate: Math.random() * 10 + 90,
-			activeServices: enrichmentServices.filter(s => s.enabled).length
-		};
-	}
 
 	async function performEnrichment() {
 		if (!enrichmentInput.trim()) {
-			error = 'Please enter an indicator to enrich';
+			enrichmentActions.clearError('enrichment');
+			// Set a temporary error (would be better to add a validation error type)
 			return;
 		}
 
 		if (selectedServices.length === 0) {
-			error = 'Please select at least one enrichment service';
+			enrichmentActions.clearError('enrichment');
 			return;
 		}
 
 		try {
-			isLoading = true;
-			error = null;
-
-			const enrichmentRequest: EnrichmentRequest = {
-				indicators: [enrichmentInput.trim()],
-				enrichment_types: selectedServices,
-				cache_results: true
-			};
-
-			const response = await ThreatIntelAPI.enrichment.enrichIndicators(enrichmentRequest);
-
-			// Add to results
-			enrichmentResults = [...response.enriched_data, ...enrichmentResults];
-
-			// Update stats
-			enrichmentStats.iocsEnriched += 1;
-
-			// Clear input
+			await enrichmentActions.enrichIndicators([enrichmentInput.trim()], selectedServices);
+			// Clear input on success
 			enrichmentInput = '';
-
 		} catch (err) {
-			console.error('Enrichment error:', err);
-			error = `Enrichment failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
-		} finally {
-			isLoading = false;
+			// Error is handled by the store
+			console.error('Enrichment failed:', err);
 		}
+	}
+
+	function clearError() {
+		enrichmentActions.clearError('enrichment');
+	}
+
+	function timeAgo(timestamp: string): string {
+		if (timestamp === 'Queued') return timestamp;
+
+		const date = new Date(timestamp);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / (1000 * 60));
+
+		if (diffMins < 1) return 'just now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		const diffHours = Math.floor(diffMins / 60);
+		if (diffHours < 24) return `${diffHours}h ago`;
+		const diffDays = Math.floor(diffHours / 24);
+		return `${diffDays}d ago`;
 	}
 
 	function getStatusIcon(status: string) {
@@ -243,36 +165,60 @@
 		<div class="dashboard-card border border-threat-critical/30">
 			<div class="flex items-center gap-3">
 				<AlertTriangle class="w-5 h-5 text-threat-critical" />
-				<div>
+				<div class="flex-1">
 					<div class="text-threat-critical font-medium">Enrichment Error</div>
 					<div class="text-slate-400 text-sm">{error}</div>
 				</div>
+				<button class="btn-glass" on:click={clearError}>
+					Dismiss
+				</button>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Stats Loading/Error Display -->
+	{#if $enrichmentStore.errors.stats}
+		<div class="dashboard-card border border-threat-medium/30">
+			<div class="flex items-center gap-3">
+				<AlertTriangle class="w-5 h-5 text-threat-medium" />
+				<div class="text-threat-medium text-sm">{$enrichmentStore.errors.stats}</div>
 			</div>
 		</div>
 	{/if}
 
 	<!-- Enrichment Stats -->
 	<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-		<div class="dashboard-card text-center">
-			<Database class="w-6 h-6 text-cyber-primary mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{enrichmentStats.iocsEnriched.toLocaleString()}</div>
-			<div class="text-sm text-slate-400">IOCs Enriched</div>
-		</div>
-		<div class="dashboard-card text-center">
-			<Clock class="w-6 h-6 text-threat-medium mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{enrichmentStats.inQueue}</div>
-			<div class="text-sm text-slate-400">In Queue</div>
-		</div>
-		<div class="dashboard-card text-center">
-			<TrendingUp class="w-6 h-6 text-threat-safe mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{enrichmentStats.successRate.toFixed(1)}%</div>
-			<div class="text-sm text-slate-400">Success Rate</div>
-		</div>
-		<div class="dashboard-card text-center">
-			<Server class="w-6 h-6 text-threat-info mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{enrichmentStats.activeServices}</div>
-			<div class="text-sm text-slate-400">Active Services</div>
-		</div>
+		{#if $enrichmentStore.loading.stats}
+			<!-- Loading skeletons -->
+			{#each Array(4) as _, i}
+				<div class="dashboard-card text-center">
+					<div class="w-6 h-6 bg-slate-600 rounded mx-auto mb-2 animate-pulse"></div>
+					<div class="h-8 bg-slate-600 rounded w-16 mx-auto mb-2 animate-pulse"></div>
+					<div class="h-4 bg-slate-700 rounded w-20 mx-auto animate-pulse"></div>
+				</div>
+			{/each}
+		{:else}
+			<div class="dashboard-card text-center">
+				<Database class="w-6 h-6 text-cyber-primary mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$enrichmentStore.stats.iocsEnriched.toLocaleString()}</div>
+				<div class="text-sm text-slate-400">IOCs Enriched</div>
+			</div>
+			<div class="dashboard-card text-center">
+				<Clock class="w-6 h-6 text-threat-medium mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$enrichmentStore.stats.inQueue}</div>
+				<div class="text-sm text-slate-400">In Queue</div>
+			</div>
+			<div class="dashboard-card text-center">
+				<TrendingUp class="w-6 h-6 text-threat-safe mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$enrichmentStore.stats.successRate.toFixed(1)}%</div>
+				<div class="text-sm text-slate-400">Success Rate</div>
+			</div>
+			<div class="dashboard-card text-center">
+				<Server class="w-6 h-6 text-threat-info mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$enrichmentStore.stats.activeServices}</div>
+				<div class="text-sm text-slate-400">Active Services</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Main Content Grid -->
@@ -285,7 +231,7 @@
 			</div>
 
 			<div class="space-y-4">
-				{#each enrichmentServices as service}
+				{#each $enrichmentStore.services as service}
 					<div class="glass-tertiary rounded-lg p-4">
 						<div class="flex items-start justify-between">
 							<div class="flex items-start gap-3 flex-1">
@@ -298,6 +244,11 @@
 										<div class="{service.enabled ? 'threat-badge-safe' : 'threat-badge-critical'}">
 											{service.enabled ? 'Active' : 'Disabled'}
 										</div>
+										{#if service.status === 'degraded'}
+											<div class="threat-badge-medium">Degraded</div>
+										{:else if service.status === 'offline'}
+											<div class="threat-badge-critical">Offline</div>
+										{/if}
 									</div>
 									<p class="text-slate-400 text-sm mb-2">{service.description}</p>
 									<div class="grid grid-cols-2 gap-2 text-xs">
@@ -346,49 +297,58 @@
 			</div>
 
 			<div class="space-y-3">
-				{#each enrichmentQueue as item}
-					<div class="glass-tertiary rounded-lg p-4">
-						<div class="flex items-start justify-between mb-3">
-							<div class="flex items-start gap-3 flex-1">
-								<div class="p-2 glass-primary rounded-lg">
-									<svelte:component this={getStatusIcon(item.status)}
-										class="w-4 h-4 {getStatusColor(item.status)} {item.status === 'processing' ? 'animate-spin' : ''}" />
-								</div>
-								<div class="flex-1">
-									<div class="flex items-center gap-3 mb-1">
-										<span class="text-slate-100 font-mono text-sm">{item.indicator}</span>
-										<div class="{getStatusBadge(item.status)}">{item.status}</div>
-									</div>
-									<div class="text-xs text-slate-400 mb-2">
-										Services: {item.services.join(', ')}
-									</div>
-									<div class="text-xs text-slate-500">
-										Started: {item.startTime}
-									</div>
-								</div>
-							</div>
-							<button class="btn-glass p-1">
-								<Eye class="w-4 h-4" />
-							</button>
-						</div>
-
-						<!-- Progress Bar -->
-						{#if item.status === 'processing' || item.status === 'completed'}
-							<div class="mt-3 pt-3 border-t border-slate-700/50">
-								<div class="flex items-center justify-between text-xs text-slate-400 mb-1">
-									<span>Progress</span>
-									<span>{item.progress}%</span>
-								</div>
-								<div class="w-full bg-slate-800 rounded-full h-2">
-									<div
-										class="bg-cyber-primary h-2 rounded-full transition-all duration-300 {item.status === 'processing' ? 'animate-pulse' : ''}"
-										style="width: {item.progress}%"
-									></div>
-								</div>
-							</div>
-						{/if}
+				{#if $enrichmentStore.queue.length === 0}
+					<div class="text-center p-8 text-slate-400">
+						<Clock class="w-8 h-8 mx-auto mb-2 opacity-50" />
+						<div class="text-sm">No items in enrichment queue</div>
 					</div>
-				{/each}
+				{:else}
+					{#each $enrichmentStore.queue as item}
+						<div class="glass-tertiary rounded-lg p-4">
+							<div class="flex items-start justify-between mb-3">
+								<div class="flex items-start gap-3 flex-1">
+									<div class="p-2 glass-primary rounded-lg">
+										<svelte:component this={getStatusIcon(item.status)}
+											class="w-4 h-4 {getStatusColor(item.status)} {item.status === 'processing' ? 'animate-spin' : ''}" />
+									</div>
+									<div class="flex-1">
+										<div class="flex items-center gap-3 mb-1">
+											<span class="text-slate-100 font-mono text-sm">
+												{item.indicator.length > 30 ? item.indicator.substring(0, 30) + '...' : item.indicator}
+											</span>
+											<div class="{getStatusBadge(item.status)}">{item.status}</div>
+										</div>
+										<div class="text-xs text-slate-400 mb-2">
+											Services: {item.services.join(', ')}
+										</div>
+										<div class="text-xs text-slate-500">
+											Started: {timeAgo(item.startTime)}
+										</div>
+									</div>
+								</div>
+								<button class="btn-glass p-1">
+									<Eye class="w-4 h-4" />
+								</button>
+							</div>
+
+							<!-- Progress Bar -->
+							{#if item.status === 'processing' || item.status === 'completed'}
+								<div class="mt-3 pt-3 border-t border-slate-700/50">
+									<div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+										<span>Progress</span>
+										<span>{item.progress}%</span>
+									</div>
+									<div class="w-full bg-slate-800 rounded-full h-2">
+										<div
+											class="bg-cyber-primary h-2 rounded-full transition-all duration-300 {item.status === 'processing' ? 'animate-pulse' : ''}"
+											style="width: {item.progress}%"
+										></div>
+									</div>
+								</div>
+							{/if}
+						</div>
+					{/each}
+				{/if}
 			</div>
 
 			<div class="mt-4 pt-4 border-t border-slate-700/50">
@@ -405,29 +365,38 @@
 		</div>
 
 		<div class="space-y-3">
-			{#each Array(3) as _, i}
-				<div class="glass-tertiary rounded-lg p-4">
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-4">
-							<div class="p-2 glass-primary rounded-lg">
-								<MapPin class="w-4 h-4 text-cyber-primary" />
-							</div>
-							<div>
-								<div class="text-slate-100 font-mono text-sm">192.168.{i + 1}.100</div>
-								<div class="text-xs text-slate-400">
-									Enriched with Shodan, DNS, Geolocation
+			{#if $enrichmentStore.recentResults.length === 0}
+				<div class="text-center p-8 text-slate-400">
+					<Search class="w-8 h-8 mx-auto mb-2 opacity-50" />
+					<div class="text-sm">No recent enrichment results</div>
+				</div>
+			{:else}
+				{#each $enrichmentStore.recentResults as result}
+					<div class="glass-tertiary rounded-lg p-4">
+						<div class="flex items-center justify-between">
+							<div class="flex items-center gap-4">
+								<div class="p-2 glass-primary rounded-lg">
+									<MapPin class="w-4 h-4 text-cyber-primary" />
+								</div>
+								<div>
+									<div class="text-slate-100 font-mono text-sm">
+										{result.indicator.length > 25 ? result.indicator.substring(0, 25) + '...' : result.indicator}
+									</div>
+									<div class="text-xs text-slate-400">
+										Enriched with {result.services.join(', ')} (confidence: {result.confidence}%)
+									</div>
 								</div>
 							</div>
-						</div>
-						<div class="flex items-center gap-3">
-							<div class="text-xs text-slate-400">{i + 1} hour ago</div>
-							<button class="btn-glass p-1">
-								<Eye class="w-4 h-4" />
-							</button>
+							<div class="flex items-center gap-3">
+								<div class="text-xs text-slate-400">{timeAgo(result.timestamp)}</div>
+								<button class="btn-glass p-1">
+									<Eye class="w-4 h-4" />
+								</button>
+							</div>
 						</div>
 					</div>
-				</div>
-			{/each}
+				{/each}
+			{/if}
 		</div>
 
 		<div class="mt-4 pt-4 border-t border-slate-700/50">

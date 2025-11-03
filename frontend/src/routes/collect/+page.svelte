@@ -4,110 +4,39 @@
 		Database, Shield, Globe, TrendingUp, Activity,
 		CheckCircle, AlertCircle, RefreshCw, Loader2
 	} from 'lucide-svelte';
-	import { ThreatIntelAPI } from '$lib/api/services';
-	import type { ThreatCollectionRequest, ThreatCollectionResponse } from '$lib/api/services';
 	import { onMount } from 'svelte';
+	import { collectionStore, collectionActions } from '$lib/stores/collection';
 
-	let isCollecting = false;
 	let selectedSources = ['otx', 'abuse_ch'];
 	let collectionInterval = 'hourly';
-	let error: string | null = null;
-	let isLoading = false;
-	let lastCollection: ThreatCollectionResponse | null = null;
-	let collectionStats = {
-		collectionsToday: 0,
-		newIocs: 0,
-		successRate: 0,
-		avgCollectionTime: '0.0s'
-	};
+	let confidenceThreshold = 70;
+	let selectedIocTypes = ['ip', 'domain', 'hash', 'url'];
 
-	const sources = [
-		{
-			id: 'otx',
-			name: 'AT&T Alien Labs OTX',
-			description: 'Open Threat Exchange - Community threat intelligence',
-			status: 'active',
-			lastCollection: '15 minutes ago',
-			iocsCollected: 1205,
-			enabled: true
-		},
-		{
-			id: 'abuse_ch',
-			name: 'Abuse.ch',
-			description: 'Malware and botnet intelligence feeds',
-			status: 'active',
-			lastCollection: '22 minutes ago',
-			iocsCollected: 342,
-			enabled: true
-		},
-		{
-			id: 'misp',
-			name: 'MISP Community',
-			description: 'Malware Information Sharing Platform',
-			status: 'inactive',
-			lastCollection: 'Never',
-			iocsCollected: 0,
-			enabled: false
-		}
-	];
+	// Reactive state from store
+	$: isCollecting = $collectionStore.activeCollections.length > 0;
+	$: isLoading = $collectionStore.loading.collection;
+	$: error = $collectionStore.errors.collection;
 
 	onMount(async () => {
-		await loadCollectionStats();
+		await collectionActions.loadStats();
 	});
-
-	async function loadCollectionStats() {
-		// Try to get basic collection stats
-		collectionStats = {
-			collectionsToday: Math.floor(Math.random() * 30) + 10, // Demo data
-			newIocs: Math.floor(Math.random() * 1000) + 500,
-			successRate: Math.random() * 10 + 90, // 90-100%
-			avgCollectionTime: (Math.random() * 3 + 1).toFixed(1) + 's'
-		};
-	}
 
 	async function startCollection() {
 		try {
-			isLoading = true;
-			error = null;
-			const startTime = Date.now();
-
-			const collectionRequest: ThreatCollectionRequest = {
-				sources: selectedSources,
-				collection_type: 'manual',
-				filters: {
-					confidence_threshold: 70,
-					ioc_types: ['ip', 'domain', 'hash', 'url']
-				}
-			};
-
-			const response = await ThreatIntelAPI.collection.collectThreats(collectionRequest);
-			const endTime = Date.now();
-
-			lastCollection = response;
-			isCollecting = true;
-
-			// Update stats
-			collectionStats.avgCollectionTime = `${((endTime - startTime) / 1000).toFixed(1)}s`;
-			collectionStats.collectionsToday += 1;
-
-			// Simulate collection completion after a delay
-			setTimeout(() => {
-				isCollecting = false;
-				collectionStats.newIocs += Math.floor(Math.random() * 500) + 100;
-			}, 5000);
-
+			await collectionActions.startCollection(selectedSources, {
+				confidenceThreshold,
+				iocTypes: selectedIocTypes,
+			});
 		} catch (err) {
-			console.error('Collection error:', err);
-			error = `Collection failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
-			isCollecting = false;
-		} finally {
-			isLoading = false;
+			// Error is handled by the store
+			console.error('Collection failed:', err);
 		}
 	}
 
 	function stopCollection() {
-		isCollecting = false;
-		error = null;
+		// For now, we'll just clear the error and reset active collections
+		collectionActions.clearError('collection');
+		// In a real implementation, we'd call an API to stop the collection
 	}
 
 	function toggleCollection() {
@@ -116,6 +45,24 @@
 		} else {
 			startCollection();
 		}
+	}
+
+	function clearError() {
+		collectionActions.clearError('collection');
+	}
+
+	function timeAgo(timestamp: string): string {
+		const date = new Date(timestamp);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / (1000 * 60));
+
+		if (diffMins < 1) return 'just now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		const diffHours = Math.floor(diffMins / 60);
+		if (diffHours < 24) return `${diffHours}h ago`;
+		const diffDays = Math.floor(diffHours / 24);
+		return `${diffDays}d ago`;
 	}
 
 	function getStatusIcon(status: string) {
@@ -178,36 +125,60 @@
 		<div class="dashboard-card border border-threat-critical/30">
 			<div class="flex items-center gap-3">
 				<AlertCircle class="w-5 h-5 text-threat-critical" />
-				<div>
+				<div class="flex-1">
 					<div class="text-threat-critical font-medium">Collection Error</div>
 					<div class="text-slate-400 text-sm">{error}</div>
 				</div>
+				<button class="btn-glass" on:click={clearError}>
+					Dismiss
+				</button>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Stats Loading/Error Display -->
+	{#if $collectionStore.errors.stats}
+		<div class="dashboard-card border border-threat-medium/30">
+			<div class="flex items-center gap-3">
+				<AlertCircle class="w-5 h-5 text-threat-medium" />
+				<div class="text-threat-medium text-sm">{$collectionStore.errors.stats}</div>
 			</div>
 		</div>
 	{/if}
 
 	<!-- Collection Stats -->
 	<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-		<div class="dashboard-card text-center">
-			<Activity class="w-6 h-6 text-cyber-primary mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{collectionStats.collectionsToday}</div>
-			<div class="text-sm text-slate-400">Collections Today</div>
-		</div>
-		<div class="dashboard-card text-center">
-			<Database class="w-6 h-6 text-threat-info mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{collectionStats.newIocs.toLocaleString()}</div>
-			<div class="text-sm text-slate-400">New IOCs</div>
-		</div>
-		<div class="dashboard-card text-center">
-			<TrendingUp class="w-6 h-6 text-threat-safe mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{collectionStats.successRate.toFixed(1)}%</div>
-			<div class="text-sm text-slate-400">Success Rate</div>
-		</div>
-		<div class="dashboard-card text-center">
-			<Clock class="w-6 h-6 text-threat-medium mx-auto mb-2" />
-			<div class="text-2xl font-bold text-slate-100 font-mono">{collectionStats.avgCollectionTime}</div>
-			<div class="text-sm text-slate-400">Avg Collection Time</div>
-		</div>
+		{#if $collectionStore.loading.stats}
+			<!-- Loading skeletons -->
+			{#each Array(4) as _, i}
+				<div class="dashboard-card text-center">
+					<div class="w-6 h-6 bg-slate-600 rounded mx-auto mb-2 animate-pulse"></div>
+					<div class="h-8 bg-slate-600 rounded w-16 mx-auto mb-2 animate-pulse"></div>
+					<div class="h-4 bg-slate-700 rounded w-20 mx-auto animate-pulse"></div>
+				</div>
+			{/each}
+		{:else}
+			<div class="dashboard-card text-center">
+				<Activity class="w-6 h-6 text-cyber-primary mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$collectionStore.stats.collectionsToday}</div>
+				<div class="text-sm text-slate-400">Collections Today</div>
+			</div>
+			<div class="dashboard-card text-center">
+				<Database class="w-6 h-6 text-threat-info mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$collectionStore.stats.newIocs.toLocaleString()}</div>
+				<div class="text-sm text-slate-400">New IOCs</div>
+			</div>
+			<div class="dashboard-card text-center">
+				<TrendingUp class="w-6 h-6 text-threat-safe mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$collectionStore.stats.successRate.toFixed(1)}%</div>
+				<div class="text-sm text-slate-400">Success Rate</div>
+			</div>
+			<div class="dashboard-card text-center">
+				<Clock class="w-6 h-6 text-threat-medium mx-auto mb-2" />
+				<div class="text-2xl font-bold text-slate-100 font-mono">{$collectionStore.stats.avgCollectionTime}</div>
+				<div class="text-sm text-slate-400">Avg Collection Time</div>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Collection Configuration -->
@@ -259,12 +230,12 @@
 						type="range"
 						min="0"
 						max="100"
-						value="70"
+						bind:value={confidenceThreshold}
 						class="w-full"
 					/>
 					<div class="flex justify-between text-xs text-slate-400 mt-1">
 						<span>0%</span>
-						<span>70%</span>
+						<span>{confidenceThreshold}%</span>
 						<span>100%</span>
 					</div>
 				</div>
@@ -279,7 +250,7 @@
 			</div>
 
 			<div class="space-y-4">
-				{#each sources as source}
+				{#each $collectionStore.sources as source}
 					<div class="glass-tertiary rounded-lg p-4">
 						<div class="flex items-start justify-between">
 							<div class="flex items-start gap-4 flex-1">
@@ -325,16 +296,19 @@
 						</div>
 
 						<!-- Collection Progress (if active) -->
-						{#if source.status === 'active' && isCollecting}
-							<div class="mt-4 pt-4 border-t border-slate-700/50">
-								<div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-									<span>Collection Progress</span>
-									<span>78%</span>
+						{#if source.status === 'active' && $collectionStore.activeCollections.length > 0}
+							{@const activeCollection = $collectionStore.activeCollections.find(c => c.source.includes(source.id))}
+							{#if activeCollection}
+								<div class="mt-4 pt-4 border-t border-slate-700/50">
+									<div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+										<span>Collection Progress</span>
+										<span>{activeCollection.progress}%</span>
+									</div>
+									<div class="w-full bg-slate-800 rounded-full h-2">
+										<div class="bg-cyber-primary h-2 rounded-full animate-pulse" style="width: {activeCollection.progress}%"></div>
+									</div>
 								</div>
-								<div class="w-full bg-slate-800 rounded-full h-2">
-									<div class="bg-cyber-primary h-2 rounded-full animate-pulse" style="width: 78%"></div>
-								</div>
-							</div>
+							{/if}
 						{/if}
 					</div>
 				{/each}
@@ -350,20 +324,27 @@
 		</div>
 
 		<div class="space-y-3">
-			{#each Array(5) as _, i}
-				<div class="flex items-center gap-4 p-3 glass-tertiary rounded-lg">
-					<div class="w-3 h-3 bg-status-online rounded-full animate-pulse"></div>
-					<div class="flex-1">
-						<div class="text-sm font-medium text-slate-200">
-							Collection completed from {i % 2 === 0 ? 'OTX' : 'Abuse.ch'}
-						</div>
-						<div class="text-xs text-slate-400">
-							{Math.floor(Math.random() * 200) + 50} new IOCs collected
-						</div>
-					</div>
-					<div class="text-xs text-slate-400">{i + 5} minutes ago</div>
+			{#if $collectionStore.recentActivity.length === 0}
+				<div class="text-center p-8 text-slate-400">
+					<Activity class="w-8 h-8 mx-auto mb-2 opacity-50" />
+					<div class="text-sm">No recent collection activity</div>
 				</div>
-			{/each}
+			{:else}
+				{#each $collectionStore.recentActivity as activity}
+					<div class="flex items-center gap-4 p-3 glass-tertiary rounded-lg">
+						<div class="w-3 h-3 {activity.status === 'completed' ? 'bg-status-online' : 'bg-status-offline'} rounded-full {activity.status === 'completed' ? 'animate-pulse' : ''}"></div>
+						<div class="flex-1">
+							<div class="text-sm font-medium text-slate-200">
+								Collection {activity.status} from {activity.source}
+							</div>
+							<div class="text-xs text-slate-400">
+								{activity.iocsCollected} new IOCs collected
+							</div>
+						</div>
+						<div class="text-xs text-slate-400">{timeAgo(activity.timestamp)}</div>
+					</div>
+				{/each}
+			{/if}
 		</div>
 
 		<div class="mt-4 pt-4 border-t border-slate-700/50">
