@@ -1,0 +1,538 @@
+name: Threat Intelligence Platform - Test Automation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_level:
+        description: 'Test level to run'
+        required: true
+        default: 'unit'
+        type: choice
+        options:
+        - unit
+        - integration
+        - performance
+        - security
+        - compliance
+        - full
+
+env:
+  PYTHON_VERSION: '3.10'
+  NODE_VERSION: '18'
+  AWS_REGION: 'us-east-1'
+
+jobs:
+  setup:
+    name: Setup Test Environment
+    runs-on: ubuntu-latest
+    outputs:
+      test-level: ${{ steps.determine-tests.outputs.test-level }}
+      cache-key: ${{ steps.cache-deps.outputs.cache-key }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Determine test level
+      id: determine-tests
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "test-level=${{ github.event.inputs.test_level }}" >> $GITHUB_OUTPUT
+        elif [ "${{ github.event_name }}" = "schedule" ]; then
+          echo "test-level=full" >> $GITHUB_OUTPUT
+        elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          echo "test-level=integration" >> $GITHUB_OUTPUT
+        else
+          echo "test-level=unit" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache dependencies
+      id: cache-deps
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          tests/.pytest_cache
+        key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-${{ hashFiles('tests/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-
+
+    - name: Install test dependencies
+      run: |
+        cd tests
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-html pytest-json-report pytest-xdist
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    if: contains(fromJSON('["unit", "integration", "full"]'), needs.setup.outputs.test-level)
+
+    strategy:
+      matrix:
+        test-group: [collector, processor, enrichment, error-handling, mocking]
+      fail-fast: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Restore dependencies cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          tests/.pytest_cache
+        key: ${{ needs.setup.outputs.cache-key }}
+
+    - name: Install dependencies
+      run: |
+        cd tests
+        pip install -r requirements.txt
+        pip install pytest-html pytest-json-report
+
+    - name: Run unit tests
+      run: |
+        cd tests
+        case "${{ matrix.test-group }}" in
+          "collector")
+            python -m pytest unit/test_collector.py -v --tb=short --json-report --json-report-file=reports/unit-collector.json
+            ;;
+          "processor")
+            python -m pytest unit/test_processor.py -v --tb=short --json-report --json-report-file=reports/unit-processor.json
+            ;;
+          "enrichment")
+            python -m pytest unit/test_enrichment.py -v --tb=short --json-report --json-report-file=reports/unit-enrichment.json
+            ;;
+          "error-handling")
+            python -m pytest unit/test_error_handling.py -v --tb=short --json-report --json-report-file=reports/unit-error-handling.json
+            ;;
+          "mocking")
+            python -m pytest unit/test_enhanced_mocking.py -v --tb=short --json-report --json-report-file=reports/unit-mocking.json
+            ;;
+        esac
+
+    - name: Upload test reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: unit-test-reports-${{ matrix.test-group }}
+        path: tests/reports/
+        retention-days: 30
+
+    - name: Comment test results on PR
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = 'tests/reports/unit-${{ matrix.test-group }}.json';
+
+          if (fs.existsSync(path)) {
+            const report = JSON.parse(fs.readFileSync(path));
+
+            const comment = `## Unit Test Results - ${{ matrix.test-group }}
+
+            - **Tests Run:** ${report.summary.total}
+            - **Passed:** ${report.summary.passed}
+            - **Failed:** ${report.summary.failed}
+            - **Skipped:** ${report.summary.skipped}
+            - **Duration:** ${report.duration}s
+
+            ${report.summary.failed > 0 ? '❌ Some tests failed' : '✅ All tests passed'}`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    if: contains(fromJSON('["integration", "full"]'), needs.setup.outputs.test-level)
+
+    strategy:
+      matrix:
+        test-type: [api-endpoints, data-flow, enhanced-endpoints]
+      fail-fast: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        cd tests
+        pip install -r requirements.txt
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Run integration tests
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+      run: |
+        cd tests
+        case "${{ matrix.test-type }}" in
+          "api-endpoints")
+            python -m pytest integration/test_api_endpoints.py -v --tb=short --json-report --json-report-file=reports/integration-api.json
+            ;;
+          "data-flow")
+            python -m pytest integration/test_end_to_end_data_flow.py -v --tb=short --json-report --json-report-file=reports/integration-e2e.json
+            ;;
+          "enhanced-endpoints")
+            python -m pytest integration/test_enhanced_api_endpoints.py -v --tb=short --json-report --json-report-file=reports/integration-enhanced.json
+            ;;
+        esac
+
+    - name: Upload integration test reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-reports-${{ matrix.test-type }}
+        path: tests/reports/
+        retention-days: 30
+
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    if: contains(fromJSON('["performance", "full"]'), needs.setup.outputs.test-level)
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        cd tests
+        pip install -r requirements.txt
+        pip install psutil numpy
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Run performance tests
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+        CONCURRENT_USERS: 3
+        LOAD_TEST_DURATION: 30
+        MAX_RESPONSE_TIME: 15.0
+      run: |
+        cd tests
+        python -m pytest integration/test_enhanced_performance.py -v --tb=short --json-report --json-report-file=reports/performance.json
+
+    - name: Generate performance report
+      if: always()
+      run: |
+        cd tests
+        python -c "
+        import json
+        import sys
+
+        try:
+            with open('reports/performance.json', 'r') as f:
+                report = json.load(f)
+
+            print('## Performance Test Summary')
+            print(f'- Duration: {report[\"duration\"]}s')
+            print(f'- Tests: {report[\"summary\"][\"total\"]}')
+            print(f'- Passed: {report[\"summary\"][\"passed\"]}')
+            print(f'- Failed: {report[\"summary\"][\"failed\"]}')
+
+            with open('performance-summary.md', 'w') as f:
+                f.write('## Performance Test Results\n\n')
+                f.write(f'- **Duration:** {report[\"duration\"]}s\n')
+                f.write(f'- **Tests:** {report[\"summary\"][\"total\"]}\n')
+                f.write(f'- **Passed:** {report[\"summary\"][\"passed\"]}\n')
+                f.write(f'- **Failed:** {report[\"summary\"][\"failed\"]}\n')
+
+        except Exception as e:
+            print(f'Error generating performance report: {e}')
+        "
+
+    - name: Upload performance reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-test-reports
+        path: |
+          tests/reports/
+          tests/performance-summary.md
+        retention-days: 30
+
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    if: contains(fromJSON('["security", "full"]'), needs.setup.outputs.test-level)
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        cd tests
+        pip install -r requirements.txt
+
+    - name: Run security tests
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+      run: |
+        cd tests
+        python -m pytest security/test_security_validation.py -v --tb=short --json-report --json-report-file=reports/security.json
+
+    - name: Upload security test reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-test-reports
+        path: tests/reports/
+        retention-days: 30
+
+  compliance-tests:
+    name: STIX Compliance Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    if: contains(fromJSON('["compliance", "full"]'), needs.setup.outputs.test-level)
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        cd tests
+        pip install -r requirements.txt
+        pip install python-dateutil jsonschema
+
+    - name: Run STIX compliance tests
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+      run: |
+        cd tests
+        python -m pytest compliance/test_stix_compliance.py -v --tb=short --json-report --json-report-file=reports/compliance.json
+
+    - name: Upload compliance test reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: compliance-test-reports
+        path: tests/reports/
+        retention-days: 30
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, performance-tests, security-tests, compliance-tests]
+    if: always()
+
+    steps:
+    - name: Download all test reports
+      uses: actions/download-artifact@v3
+      with:
+        path: test-reports
+
+    - name: Generate test summary
+      run: |
+        echo "# Test Execution Summary" > test-summary.md
+        echo "" >> test-summary.md
+        echo "## Test Results" >> test-summary.md
+        echo "" >> test-summary.md
+
+        # Count artifacts
+        unit_tests=$(find test-reports -name "*unit-test-reports*" -type d | wc -l)
+        integration_tests=$(find test-reports -name "*integration-test-reports*" -type d | wc -l)
+        performance_tests=$(find test-reports -name "*performance-test-reports*" -type d | wc -l)
+        security_tests=$(find test-reports -name "*security-test-reports*" -type d | wc -l)
+        compliance_tests=$(find test-reports -name "*compliance-test-reports*" -type d | wc -l)
+
+        echo "- **Unit Tests:** $unit_tests test groups executed" >> test-summary.md
+        echo "- **Integration Tests:** $integration_tests test types executed" >> test-summary.md
+        echo "- **Performance Tests:** $performance_tests test suites executed" >> test-summary.md
+        echo "- **Security Tests:** $security_tests test suites executed" >> test-summary.md
+        echo "- **Compliance Tests:** $compliance_tests test suites executed" >> test-summary.md
+        echo "" >> test-summary.md
+
+        # Generate status badges
+        echo "## Status Badges" >> test-summary.md
+        echo "" >> test-summary.md
+        echo "![Unit Tests](https://img.shields.io/badge/Unit%20Tests-$([[ $unit_tests -gt 0 ]] && echo 'Executed' || echo 'Skipped')-$([[ $unit_tests -gt 0 ]] && echo 'green' || echo 'gray'))" >> test-summary.md
+        echo "![Integration Tests](https://img.shields.io/badge/Integration%20Tests-$([[ $integration_tests -gt 0 ]] && echo 'Executed' || echo 'Skipped')-$([[ $integration_tests -gt 0 ]] && echo 'green' || echo 'gray'))" >> test-summary.md
+        echo "![Performance Tests](https://img.shields.io/badge/Performance%20Tests-$([[ $performance_tests -gt 0 ]] && echo 'Executed' || echo 'Skipped')-$([[ $performance_tests -gt 0 ]] && echo 'green' || echo 'gray'))" >> test-summary.md
+        echo "![Security Tests](https://img.shields.io/badge/Security%20Tests-$([[ $security_tests -gt 0 ]] && echo 'Executed' || echo 'Skipped')-$([[ $security_tests -gt 0 ]] && echo 'green' || echo 'gray'))" >> test-summary.md
+        echo "![Compliance Tests](https://img.shields.io/badge/STIX%20Compliance-$([[ $compliance_tests -gt 0 ]] && echo 'Executed' || echo 'Skipped')-$([[ $compliance_tests -gt 0 ]] && echo 'green' || echo 'gray'))" >> test-summary.md
+
+    - name: Upload test summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-execution-summary
+        path: test-summary.md
+        retention-days: 90
+
+    - name: Comment summary on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+
+          if (fs.existsSync('test-summary.md')) {
+            const summary = fs.readFileSync('test-summary.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+          }
+
+  infrastructure-validation:
+    name: Infrastructure Validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        cd tests
+        pip install -r requirements.txt
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Run infrastructure connectivity tests
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+      run: |
+        cd tests
+        python -m pytest test_infrastructure_connectivity.py -v --tb=short
+
+    - name: Validate deployment health
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+      run: |
+        echo "Performing deployment health check..."
+
+        # Basic health check
+        response=$(curl -s -o /dev/null -w "%{http_code}" "$API_BASE_URL/search?limit=1" -H "x-api-key: $TEST_API_KEY")
+
+        if [ "$response" = "200" ] || [ "$response" = "204" ]; then
+          echo "✅ API is healthy (HTTP $response)"
+        else
+          echo "❌ API health check failed (HTTP $response)"
+          exit 1
+        fi
+
+  notification:
+    name: Test Notifications
+    runs-on: ubuntu-latest
+    needs: [test-summary]
+    if: always() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+
+    steps:
+    - name: Send Slack notification
+      if: env.SLACK_WEBHOOK_URL
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        status="${{ needs.test-summary.result }}"
+        color="good"
+
+        if [ "$status" != "success" ]; then
+          color="danger"
+        fi
+
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{
+            \"attachments\": [{
+              \"color\": \"$color\",
+              \"title\": \"Threat Intelligence Platform - Test Results\",
+              \"text\": \"Test execution completed with status: $status\",
+              \"fields\": [
+                {\"title\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"short\": true},
+                {\"title\": \"Commit\", \"value\": \"${{ github.sha }}\", \"short\": true},
+                {\"title\": \"Workflow\", \"value\": \"${{ github.workflow }}\", \"short\": true}
+              ]
+            }]
+          }" \
+          $SLACK_WEBHOOK_URL
+
+    - name: Send email notification
+      if: env.EMAIL_NOTIFICATION && needs.test-summary.result != 'success'
+      env:
+        EMAIL_NOTIFICATION: ${{ secrets.EMAIL_NOTIFICATION }}
+      run: |
+        echo "Test execution failed. Email notification would be sent to: $EMAIL_NOTIFICATION"
+        # Add actual email sending logic here if needed

@@ -5,7 +5,7 @@ Test configuration and fixtures for threat intelligence platform testing
 import os
 import pytest
 import boto3
-from moto import mock_dynamodb, mock_s3, mock_secretsmanager
+from moto import mock_aws
 import json
 
 # Test configuration
@@ -33,7 +33,7 @@ def mock_aws_credentials():
 @pytest.fixture
 def mock_dynamodb_setup(mock_aws_credentials):
     """Set up mocked DynamoDB tables"""
-    with mock_dynamodb():
+    with mock_aws():
         dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
         # Create threat intelligence table
@@ -93,7 +93,7 @@ def mock_dynamodb_setup(mock_aws_credentials):
 @pytest.fixture
 def mock_s3_setup(mock_aws_credentials):
     """Set up mocked S3 buckets"""
-    with mock_s3():
+    with mock_aws():
         s3 = boto3.client('s3', region_name='us-east-1')
 
         # Create test buckets
@@ -111,7 +111,7 @@ def mock_s3_setup(mock_aws_credentials):
 @pytest.fixture
 def mock_secrets_manager(mock_aws_credentials):
     """Set up mocked Secrets Manager"""
-    with mock_secretsmanager():
+    with mock_aws():
         secrets = boto3.client('secretsmanager', region_name='us-east-1')
 
         # Create API keys secret
