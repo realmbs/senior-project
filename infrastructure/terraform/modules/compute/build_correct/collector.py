@@ -48,6 +48,16 @@ MAX_RETRIES = 2
 threat_intel_table = dynamodb.Table(THREAT_INTEL_TABLE)
 dedup_table = dynamodb.Table(DEDUP_TABLE)
 
+# CORS Headers Helper Function
+def get_cors_headers():
+    """Returns standard CORS headers for API Gateway Lambda proxy integration"""
+    return {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        'Content-Type': 'application/json'
+    }
+
 
 def get_api_keys() -> Dict[str, str]:
     """Retrieve API keys from AWS Secrets Manager"""
@@ -451,6 +461,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 
         result = {
             'statusCode': 200,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'message': 'Collection completed successfully',
                 'indicators_collected': len(all_indicators),
@@ -467,6 +478,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         logger.error(f"Collection failed: {str(e)}")
         return {
             'statusCode': 500,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'error': 'Collection failed',
                 'message': str(e),
