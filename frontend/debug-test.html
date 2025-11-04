@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Debug API Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #fff; }
+    .test { margin: 20px 0; padding: 10px; border: 1px solid #444; }
+    .error { color: #ff6b6b; }
+    .success { color: #51cf66; }
+    pre { background: #2d2d2d; padding: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>Debug API Test</h1>
+
+  <div class="test">
+    <h3>Environment Check</h3>
+    <div id="env-check"></div>
+  </div>
+
+  <div class="test">
+    <h3>Direct Fetch Test</h3>
+    <button onclick="testDirectFetch()">Test Direct Fetch</button>
+    <div id="fetch-result"></div>
+  </div>
+
+  <div class="test">
+    <h3>KY Test</h3>
+    <button onclick="testKy()">Test KY Library</button>
+    <div id="ky-result"></div>
+  </div>
+
+  <script type="module">
+    // Environment check
+    const apiKey = import.meta.env.VITE_API_KEY;
+    document.getElementById('env-check').innerHTML = `
+      <p>API Key from env: ${apiKey ? apiKey.substring(0, 8) + '...' : 'NOT FOUND'}</p>
+      <p>Full API Key: ${apiKey || 'undefined'}</p>
+    `;
+
+    // Direct fetch test
+    window.testDirectFetch = async function() {
+      const resultEl = document.getElementById('fetch-result');
+      resultEl.innerHTML = '<p>Testing...</p>';
+
+      try {
+        console.log('Starting direct fetch test...');
+        const response = await fetch('https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev/search?limit=1', {
+          headers: {
+            'X-Api-Key': apiKey || 'mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf'
+          }
+        });
+
+        console.log('Response status:', response.status);
+        console.log('Response headers:', [...response.headers.entries()]);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Response data:', data);
+
+        resultEl.innerHTML = `
+          <p class="success">✅ Success!</p>
+          <p>Status: ${response.status}</p>
+          <p>Results count: ${data.results?.count || 0}</p>
+          <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+      } catch (error) {
+        console.error('Fetch error:', error);
+        resultEl.innerHTML = `
+          <p class="error">❌ Error: ${error.message}</p>
+          <p>Check browser console for details</p>
+        `;
+      }
+    };
+
+    // KY test
+    window.testKy = async function() {
+      const resultEl = document.getElementById('ky-result');
+      resultEl.innerHTML = '<p>Testing KY...</p>';
+
+      try {
+        // Import KY dynamically
+        const { default: ky } = await import('ky');
+
+        console.log('Starting KY test...');
+        const response = await ky.get('https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev/search', {
+          searchParams: { limit: 1 },
+          headers: {
+            'X-Api-Key': apiKey || 'mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf'
+          }
+        }).json();
+
+        console.log('KY response:', response);
+
+        resultEl.innerHTML = `
+          <p class="success">✅ KY Success!</p>
+          <p>Results count: ${response.results?.count || 0}</p>
+          <pre>${JSON.stringify(response, null, 2)}</pre>
+        `;
+      } catch (error) {
+        console.error('KY error:', error);
+        resultEl.innerHTML = `
+          <p class="error">❌ KY Error: ${error.message}</p>
+          <p>Check browser console for details</p>
+        `;
+      }
+    };
+  </script>
+</body>
+</html>

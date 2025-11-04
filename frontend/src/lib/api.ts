@@ -6,14 +6,14 @@ const API_KEY = import.meta.env.VITE_API_KEY || 'mhxJBeDRDP515dkUrivFZ2B9IWY1Khx
 
 export const api = ky.create({
   prefixUrl: API_BASE,
-  headers: { 'x-api-key': API_KEY },
+  headers: { 'X-Api-Key': API_KEY },
   timeout: 30000
 });
 
 // Separate API client for collection endpoint with longer timeout
 export const apiCollection = ky.create({
   prefixUrl: API_BASE,
-  headers: { 'x-api-key': API_KEY },
+  headers: { 'X-Api-Key': API_KEY },
   timeout: 60000  // 60 seconds for collection jobs
 });
 
