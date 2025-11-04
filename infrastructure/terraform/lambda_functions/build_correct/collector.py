@@ -256,6 +256,48 @@ def get_stix_pattern_type(ioc_type: str) -> str:
     return mapping.get(ioc_type.lower(), 'domain-name')
 
 
+def parse_api_gateway_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse API Gateway event and handle base64 encoding
+
+    Args:
+        event: Lambda event from API Gateway or direct invocation
+
+    Returns:
+        Parsed request body as dictionary
+    """
+    # Direct Lambda invocation (no API Gateway)
+    if 'httpMethod' not in event and 'body' not in event:
+        return event
+
+    # API Gateway request
+    if 'body' in event and event['body']:
+        body = event['body']
+
+        # Handle base64 encoded body from API Gateway
+        if event.get('isBase64Encoded', False):
+            import base64
+            try:
+                body = base64.b64decode(body).decode('utf-8')
+                logger.info("Decoded base64 encoded request body")
+            except Exception as e:
+                logger.error(f"Failed to decode base64 body: {str(e)}")
+                raise ValueError("Invalid base64 encoded request body")
+
+        # Parse JSON body
+        if isinstance(body, str):
+            try:
+                return json.loads(body)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON body: {str(e)} - Body: {body[:200]}")
+                raise ValueError("Invalid JSON in request body")
+        else:
+            return body
+    else:
+        # No body provided
+        return {}
+
+
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
     Main Lambda handler for threat intelligence collection
@@ -273,11 +315,8 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         # Get API keys
         api_keys = get_api_keys()
 
-        # Parse request
-        if 'body' in event and event['body']:
-            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-        else:
-            body = event
+        # Parse request using enhanced API Gateway handling
+        body = parse_api_gateway_event(event)
 
         sources = body.get('sources', ['otx', 'abuse_ch'])
         limit = min(body.get('limit', 50), 100)  # Cap at 100 for MVP

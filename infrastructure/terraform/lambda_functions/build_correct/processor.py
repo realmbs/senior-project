@@ -319,6 +319,48 @@ def export_indicators(request: Dict[str, Any]) -> Dict[str, Any]:
         return {'error': str(e)}
 
 
+def parse_api_gateway_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse API Gateway event and handle base64 encoding
+
+    Args:
+        event: Lambda event from API Gateway or direct invocation
+
+    Returns:
+        Parsed request body as dictionary
+    """
+    # Direct Lambda invocation (no API Gateway)
+    if 'httpMethod' not in event and 'body' not in event:
+        return event
+
+    # API Gateway request
+    if 'body' in event and event['body']:
+        body = event['body']
+
+        # Handle base64 encoded body from API Gateway
+        if event.get('isBase64Encoded', False):
+            import base64
+            try:
+                body = base64.b64decode(body).decode('utf-8')
+                logger.info("Decoded base64 encoded request body")
+            except Exception as e:
+                logger.error(f"Failed to decode base64 body: {str(e)}")
+                raise ValueError("Invalid base64 encoded request body")
+
+        # Parse JSON body
+        if isinstance(body, str):
+            try:
+                return json.loads(body)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON body: {str(e)} - Body: {body[:200]}")
+                raise ValueError("Invalid JSON in request body")
+        else:
+            return body
+    else:
+        # No body provided
+        return {}
+
+
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
     Main Lambda handler for threat intelligence processing
@@ -355,9 +397,8 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 body['query'] = {k: v for k, v in body['query'].items() if v is not None}
             else:
                 # POST request with body
-                if event.get('body'):
-                    body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-                else:
+                body = parse_api_gateway_event(event)
+                if not body:
                     body = {'action': 'process'}
         else:
             # Direct Lambda invocation
