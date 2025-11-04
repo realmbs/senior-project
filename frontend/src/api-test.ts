@@ -1,5 +1,5 @@
 // API test functionality
-import { searchThreats, collectThreats, enrichIndicator } from './lib/api';
+import { searchThreats, collectThreats, enrichIndicator, detectIocType } from './lib/api';
 
 // Helper function to update status and data
 function updateStatus(statusEl: HTMLElement, dataEl: HTMLElement, isLoading: boolean, error?: string, data?: any) {
@@ -25,7 +25,11 @@ searchBtn.addEventListener('click', async () => {
   updateStatus(searchStatus, searchData, true);
 
   try {
-    const result = await searchThreats(5);
+    const query = (document.getElementById('searchQuery') as HTMLInputElement).value.trim() || undefined;
+    const type = (document.getElementById('searchType') as HTMLSelectElement).value || undefined;
+    const limit = parseInt((document.getElementById('searchLimit') as HTMLInputElement).value) || 5;
+
+    const result = await searchThreats(limit, query, type);
     updateStatus(searchStatus, searchData, false, undefined, result);
   } catch (e) {
     updateStatus(searchStatus, searchData, false, e instanceof Error ? e.message : String(e));
@@ -44,10 +48,18 @@ collectBtn.addEventListener('click', async () => {
   updateStatus(collectStatus, collectData, true);
 
   try {
-    const result = await collectThreats(['otx']);
+    const result = await collectThreats(['otx'], 10, 'automated', {
+      ioc_types: ['domain', 'ip'],
+      confidence: 70
+    });
     updateStatus(collectStatus, collectData, false, undefined, result);
   } catch (e) {
-    updateStatus(collectStatus, collectData, false, e instanceof Error ? e.message : String(e));
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+      updateStatus(collectStatus, collectData, false, 'Collection timed out (this is normal - collection jobs run for 30+ seconds)', undefined);
+    } else {
+      updateStatus(collectStatus, collectData, false, errorMsg);
+    }
   }
 
   collectBtn.disabled = false;
@@ -70,7 +82,8 @@ enrichBtn.addEventListener('click', async () => {
   updateStatus(enrichStatus, enrichData, true);
 
   try {
-    const result = await enrichIndicator(indicator);
+    const iocType = detectIocType(indicator);
+    const result = await enrichIndicator(indicator, iocType);
     updateStatus(enrichStatus, enrichData, false, undefined, result);
   } catch (e) {
     updateStatus(enrichStatus, enrichData, false, e instanceof Error ? e.message : String(e));
@@ -79,5 +92,21 @@ enrichBtn.addEventListener('click', async () => {
   enrichBtn.disabled = false;
 });
 
+// IOC type detection and display
+const detectedTypeEl = document.getElementById('detectedType') as HTMLSpanElement;
+
+function updateDetectedType() {
+  const value = indicatorInput.value.trim();
+  if (value) {
+    const type = detectIocType(value);
+    detectedTypeEl.textContent = `Detected type: ${type}`;
+  } else {
+    detectedTypeEl.textContent = '';
+  }
+}
+
+indicatorInput.addEventListener('input', updateDetectedType);
+
 // Set default test value
 indicatorInput.value = '1.1.1.1';
+updateDetectedType();
