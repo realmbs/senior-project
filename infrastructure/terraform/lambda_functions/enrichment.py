@@ -114,6 +114,48 @@ def rate_limit_check() -> bool:
     return True
 
 
+def parse_api_gateway_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse API Gateway event and handle base64 encoding
+
+    Args:
+        event: Lambda event from API Gateway or direct invocation
+
+    Returns:
+        Parsed request body as dictionary
+    """
+    # Direct Lambda invocation (no API Gateway)
+    if 'httpMethod' not in event and 'body' not in event:
+        return event
+
+    # API Gateway request
+    if 'body' in event and event['body']:
+        body = event['body']
+
+        # Handle base64 encoded body from API Gateway
+        if event.get('isBase64Encoded', False):
+            import base64
+            try:
+                body = base64.b64decode(body).decode('utf-8')
+                logger.info("Decoded base64 encoded request body")
+            except Exception as e:
+                logger.error(f"Failed to decode base64 body: {str(e)}")
+                raise ValueError("Invalid base64 encoded request body")
+
+        # Parse JSON body
+        if isinstance(body, str):
+            try:
+                return json.loads(body)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON body: {str(e)} - Body: {body[:200]}")
+                raise ValueError("Invalid JSON in request body")
+        else:
+            return body
+    else:
+        # No body provided
+        return {}
+
+
 def get_ip_geolocation(ip_address: str) -> Dict[str, Any]:
     """Get basic IP geolocation using free API"""
     try:
@@ -357,11 +399,8 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         # Get API keys
         api_keys = get_api_keys()
 
-        # Parse request
-        if 'body' in event and event['body']:
-            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-        else:
-            body = event
+        # Parse request using enhanced API Gateway handling
+        body = parse_api_gateway_event(event)
 
         indicators = body.get('indicators', [])
         if not indicators:
@@ -379,10 +418,21 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 
         # Limit to 10 indicators for MVP to avoid timeouts
         for indicator in indicators[:10]:
-            ioc_value = indicator.get('ioc_value', '').strip()
-            ioc_type = indicator.get('ioc_type', '').strip()
+            # Handle both string and dict formats
+            if isinstance(indicator, str):
+                ioc_value = indicator.strip()
+                # Auto-detect IOC type based on format
+                if '.' in ioc_value and all(part.isdigit() for part in ioc_value.split('.') if part):
+                    ioc_type = 'ip'
+                elif '.' in ioc_value:
+                    ioc_type = 'domain'
+                else:
+                    ioc_type = 'hash'
+            else:
+                ioc_value = indicator.get('ioc_value', '').strip()
+                ioc_type = indicator.get('ioc_type', '').strip()
 
-            if not ioc_value or not ioc_type:
+            if not ioc_value:
                 continue
 
             try:

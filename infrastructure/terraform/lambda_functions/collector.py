@@ -124,6 +124,48 @@ def archive_raw_data(source: str, data: Dict[str, Any]) -> None:
         logger.error(f"Failed to archive raw data: {str(e)}")
 
 
+def parse_api_gateway_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse API Gateway event and handle base64 encoding
+
+    Args:
+        event: Lambda event from API Gateway or direct invocation
+
+    Returns:
+        Parsed request body as dictionary
+    """
+    # Direct Lambda invocation (no API Gateway)
+    if 'httpMethod' not in event and 'body' not in event:
+        return event
+
+    # API Gateway request
+    if 'body' in event and event['body']:
+        body = event['body']
+
+        # Handle base64 encoded body from API Gateway
+        if event.get('isBase64Encoded', False):
+            import base64
+            try:
+                body = base64.b64decode(body).decode('utf-8')
+                logger.info("Decoded base64 encoded request body")
+            except Exception as e:
+                logger.error(f"Failed to decode base64 body: {str(e)}")
+                raise ValueError("Invalid base64 encoded request body")
+
+        # Parse JSON body
+        if isinstance(body, str):
+            try:
+                return json.loads(body)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON body: {str(e)} - Body: {body[:200]}")
+                raise ValueError("Invalid JSON in request body")
+        else:
+            return body
+    else:
+        # No body provided
+        return {}
+
+
 def collect_otx_indicators(api_key: str, limit: int = 50) -> List[Dict[str, Any]]:
     """Collect basic indicators from OTX with enhanced error handling and debugging"""
     indicators = []
@@ -388,36 +430,54 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         # Get API keys
         api_keys = get_api_keys()
 
-        # Parse request
-        if 'body' in event and event['body']:
-            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-        else:
-            body = event
+        # Parse request using enhanced API Gateway handling
+        body = parse_api_gateway_event(event)
 
-        sources = body.get('sources', ['otx', 'abuse_ch'])
-        limit = min(body.get('limit', 50), 100)  # Cap at 100 for MVP
+        sources = body.get('sources', ['otx'])
+        limit = min(body.get('limit', 10), 10)  # Cap at 10 for quick response to avoid timeouts
+
+        # Check remaining time to avoid timeout
+        remaining_time_ms = context.get_remaining_time_in_millis()
+        max_processing_time_ms = min(remaining_time_ms - 5000, 25000)  # Leave 5 seconds buffer, max 25 seconds
 
         all_indicators = []
         collection_stats = {}
+        start_time = time.time()
 
-        # Collect from OTX
+        # Collect from OTX with timeout protection
         if 'otx' in sources and api_keys['otx_api_key']:
-            logger.info("Collecting from OTX...")
-            otx_indicators = collect_otx_indicators(api_keys['otx_api_key'], limit)
-            all_indicators.extend(otx_indicators)
-            collection_stats['otx'] = len(otx_indicators)
+            logger.info(f"Collecting from OTX (limit: {limit}, max time: {max_processing_time_ms}ms)...")
+
+            # Check if we have enough time for collection
+            if (time.time() - start_time) * 1000 < max_processing_time_ms:
+                try:
+                    otx_indicators = collect_otx_indicators(api_keys['otx_api_key'], limit)
+                    all_indicators.extend(otx_indicators)
+                    collection_stats['otx'] = len(otx_indicators)
+                except Exception as e:
+                    logger.error(f"OTX collection failed: {str(e)}")
+                    collection_stats['otx'] = 0
+            else:
+                logger.warning("Insufficient time remaining for OTX collection")
+                collection_stats['otx'] = 0
 
         # Collect from Abuse.ch (temporarily disabled - authentication issue)
         if 'abuse_ch' in sources:
             logger.info("Abuse.ch collection temporarily disabled (authentication required)")
             collection_stats['abuse_ch'] = 0
 
-        # Store indicators
+        # Store indicators with timeout protection
         stored_count = 0
         for indicator in all_indicators:
+            # Check timeout before each store operation
+            if (time.time() - start_time) * 1000 >= max_processing_time_ms:
+                logger.warning(f"Timeout protection: stopping storage after {stored_count} indicators")
+                break
+
             if store_indicator(indicator):
                 stored_count += 1
 
+        processing_time = time.time() - start_time
         result = {
             'statusCode': 200,
             'body': json.dumps({
@@ -425,6 +485,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 'indicators_collected': len(all_indicators),
                 'indicators_stored': stored_count,
                 'collection_stats': collection_stats,
+                'processing_time_seconds': round(processing_time, 2),
                 'timestamp': datetime.now(timezone.utc).isoformat()
             })
         }
