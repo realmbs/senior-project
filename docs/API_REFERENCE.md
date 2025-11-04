@@ -1,803 +1,577 @@
-# API Reference Documentation
+# Threat Intelligence Platform API Reference
+
+**Version**: 1.0
+**Base URL**: `https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev`
+**Last Updated**: November 4, 2025
 
 ## Overview
 
-The Threat Intelligence Platform provides a comprehensive REST API for threat intelligence collection, processing, enrichment, search, analytics, and export operations. All endpoints require API key authentication and follow RESTful conventions.
+The Threat Intelligence Platform provides a RESTful API for automated threat intelligence collection, OSINT enrichment, and threat data search capabilities. The platform integrates with multiple threat intelligence sources and provides STIX 2.1 compliant data output.
 
-## Base Configuration
+## Authentication
 
-### API Gateway Details
-- **Base URL**: `https://{api_id}.execute-api.{region}.amazonaws.com/dev`
-- **Authentication**: API Key required in `x-api-key` header
-- **Content-Type**: `application/json`
-- **Rate Limits**: 100 req/s, 200 burst, 10K/month quota
+All API endpoints require authentication using an API key passed in the request header.
 
-### Common Response Format
-```json
-{
-  "status": "success|error",
-  "message": "Operation description",
-  "data": {},
-  "timestamp": "2024-01-01T00:00:00Z",
-  "correlation_id": "uuid"
-}
+### Header
+```
+x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf
 ```
 
-### HTTP Status Codes
-- **200**: Success
-- **400**: Bad Request (invalid parameters)
-- **401**: Unauthorized (missing/invalid API key)
-- **429**: Rate Limit Exceeded
-- **500**: Internal Server Error
-
-## Core Endpoints
-
-### 1. Threat Intelligence Collection
-
-#### POST /collect
-Trigger threat intelligence collection from OSINT sources.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/collect" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "otx|abuse_ch|shodan",
-    "priority": "critical|high|standard|low",
-    "filters": {
-      "date_range": {
-        "start": "2024-01-01T00:00:00Z",
-        "end": "2024-01-02T00:00:00Z"
-      },
-      "indicator_types": ["ip", "domain", "url", "hash"],
-      "confidence_threshold": 70
-    },
-    "options": {
-      "enable_enrichment": true,
-      "batch_size": 50,
-      "max_indicators": 1000
-    }
-  }'
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Collection job initiated",
-  "data": {
-    "job_id": "collect-20240101-uuid",
-    "source": "otx",
-    "priority": "high",
-    "estimated_completion": "2024-01-01T00:05:00Z",
-    "indicators_expected": 245,
-    "correlation_id": "corr-uuid"
-  },
-  "timestamp": "2024-01-01T00:00:00Z"
-}
-```
-
-**Parameters:**
-- `source` (required): Data source identifier
-- `priority` (optional): Processing priority level (default: "standard")
-- `filters` (optional): Collection filters and constraints
-- `options` (optional): Collection configuration options
-
-**Supported Sources:**
-- `otx`: AT&T Alien Labs Open Threat Exchange
-- `abuse_ch`: Abuse.ch multi-feed (MalwareBazaar, URLhaus, ThreatFox, Feodo)
-- `shodan`: Shodan infrastructure scanning (requires premium key)
-
----
-
-### 2. OSINT Enrichment
-
-#### POST /enrich
-Enrich threat indicators with additional intelligence sources.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/enrich" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "indicators": [
-      {
-        "type": "ip",
-        "value": "8.8.8.8"
-      },
-      {
-        "type": "domain",
-        "value": "example.com"
-      }
-    ],
-    "enrichment_types": [
-      "geolocation",
-      "reputation",
-      "dns_analysis",
-      "whois",
-      "shodan"
-    ],
-    "options": {
-      "force_refresh": false,
-      "include_raw_data": true,
-      "confidence_threshold": 60
-    }
-  }'
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Enrichment completed",
-  "data": {
-    "enriched_indicators": [
-      {
-        "indicator": {
-          "type": "ip",
-          "value": "8.8.8.8"
-        },
-        "enrichment": {
-          "geolocation": {
-            "country": "US",
-            "region": "California",
-            "city": "Mountain View",
-            "latitude": 37.4056,
-            "longitude": -122.0775,
-            "confidence": 95
-          },
-          "reputation": {
-            "risk_score": 15,
-            "reputation_score": 85,
-            "threat_level": "low",
-            "sources_count": 12
-          },
-          "dns_analysis": {
-            "reverse_dns": "dns.google",
-            "ptr_records": ["dns.google."],
-            "authoritative": true
-          },
-          "shodan": {
-            "open_ports": [53, 443],
-            "services": ["DNS", "HTTPS"],
-            "last_scan": "2024-01-01T00:00:00Z",
-            "vulns": []
-          }
-        },
-        "cache_status": "hit",
-        "processing_time_ms": 245
-      }
-    ],
-    "summary": {
-      "total_indicators": 2,
-      "successful_enrichments": 2,
-      "cache_hits": 1,
-      "total_processing_time_ms": 450
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00Z"
-}
-```
-
-**Enrichment Types:**
-- `geolocation`: IP/domain geographic location
-- `reputation`: Multi-source reputation scoring
-- `dns_analysis`: DNS record analysis and validation
-- `whois`: Domain registration information
-- `shodan`: Infrastructure scanning and vulnerability data
-
----
-
-### 3. Search & Query Engine
-
-#### POST /search
-Search threat intelligence data with advanced query capabilities.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "search",
-    "query": {
-      "ioc_value": "malicious.domain.com",
-      "ioc_type": "domain",
-      "threat_type": "malware",
-      "date_range": {
-        "start": "2024-01-01T00:00:00Z",
-        "end": "2024-01-02T00:00:00Z"
-      },
-      "confidence_threshold": 70,
-      "risk_score_range": {
-        "min": 60,
-        "max": 100
-      },
-      "sources": ["otx", "abuse_ch"],
-      "fuzzy_match": true,
-      "fuzzy_threshold": 0.8
-    },
-    "options": {
-      "include_stix": true,
-      "include_enrichment": true,
-      "max_results": 100,
-      "sort_by": "confidence",
-      "sort_order": "desc"
-    },
-    "pagination": {
-      "page": 1,
-      "page_size": 50,
-      "cursor": null
-    }
-  }'
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Search completed",
-  "data": {
-    "results": [
-      {
-        "indicator_id": "ind-uuid",
-        "ioc_value": "malicious.domain.com",
-        "ioc_type": "domain",
-        "threat_type": "malware",
-        "confidence": 85,
-        "risk_score": 75,
-        "source": "otx",
-        "first_seen": "2024-01-01T00:00:00Z",
-        "last_seen": "2024-01-01T12:00:00Z",
-        "stix_object": {
-          "type": "indicator",
-          "id": "indicator--uuid",
-          "pattern": "[domain-name:value = 'malicious.domain.com']",
-          "labels": ["malicious-activity"]
-        },
-        "enrichment": {
-          "geolocation": {
-            "country": "RU",
-            "risk_level": "high"
-          },
-          "reputation": {
-            "risk_score": 85,
-            "threat_level": "high"
-          }
-        },
-        "correlation_count": 5,
-        "related_indicators": 12
-      }
-    ],
-    "pagination": {
-      "total_results": 245,
-      "page": 1,
-      "page_size": 50,
-      "total_pages": 5,
-      "next_cursor": "cursor-token",
-      "has_more": true
-    },
-    "query_performance": {
-      "execution_time_ms": 125,
-      "strategy_used": "gsi_time_index",
-      "cache_hit": false,
-      "results_cached": true
-    },
-    "aggregations": {
-      "by_source": {
-        "otx": 150,
-        "abuse_ch": 95
-      },
-      "by_threat_type": {
-        "malware": 180,
-        "phishing": 65
-      },
-      "by_confidence": {
-        "high": 200,
-        "medium": 45
-      }
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00Z"
-}
-```
-
-**Search Strategies:**
-- `exact_ioc`: Direct IOC value match
-- `pattern_search`: Pattern-based matching
-- `fuzzy_search`: Similarity-based matching (70% threshold)
-- `time_range`: Temporal query optimization
-- `source_specific`: Source-filtered queries
-- `correlation`: Related indicator discovery
-- `risk_analysis`: Risk score-based filtering
-- `geographic`: Location-based clustering
-- `full_text`: Content-based search
-
----
-
-### 4. Export Operations
-
-#### POST /search (action: export)
-Export threat intelligence data in multiple formats.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "export",
-    "query": {
-      "date_range": {
-        "start": "2024-01-01T00:00:00Z",
-        "end": "2024-01-02T00:00:00Z"
-      },
-      "sources": ["otx", "abuse_ch"],
-      "confidence_threshold": 70
-    },
-    "export_options": {
-      "format": "stix21",
-      "compression": "gzip",
-      "include_enrichment": true,
-      "include_metadata": true,
-      "max_file_size_mb": 100,
-      "split_by_source": false
-    },
-    "delivery": {
-      "method": "s3_presigned_url",
-      "expires_in_hours": 24
-    }
-  }'
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Export completed",
-  "data": {
-    "export_id": "export-20240101-uuid",
-    "format": "stix21",
-    "compression": "gzip",
-    "file_info": {
-      "filename": "threat_intel_export_20240101.stix2.gz",
-      "size_bytes": 2048576,
-      "compressed_size_bytes": 512144,
-      "compression_ratio": 0.25,
-      "record_count": 1250
-    },
-    "download": {
-      "url": "https://s3.amazonaws.com/bucket/export.stix2.gz?X-Amz-SignedHeaders=...",
-      "expires_at": "2024-01-02T00:00:00Z",
-      "method": "GET"
-    },
-    "metadata": {
-      "export_timestamp": "2024-01-01T00:00:00Z",
-      "query_hash": "sha256-hash",
-      "data_freshness": "2024-01-01T23:30:00Z"
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00Z"
-}
-```
-
-**Export Formats:**
-- `json`: Raw JSON format
-- `csv`: Comma-separated values
-- `stix21`: STIX 2.1 compliant format
-- `xml`: Structured XML format
-
-**Compression Options:**
-- `none`: No compression
-- `gzip`: GZIP compression (recommended)
-- `zip`: ZIP archive format
-
----
-
-## Analytics Endpoints
-
-### 5. Trend Analysis
-
-#### POST /search (action: trend_analysis)
-Analyze threat intelligence trends and patterns.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "trend_analysis",
-    "analysis_config": {
-      "time_period": {
-        "start": "2024-01-01T00:00:00Z",
-        "end": "2024-01-07T00:00:00Z",
-        "granularity": "daily"
-      },
-      "analysis_types": [
-        "volume_trends",
-        "threat_evolution",
-        "source_analysis",
-        "campaign_detection"
-      ],
-      "filters": {
-        "threat_types": ["malware", "phishing"],
-        "min_confidence": 70,
-        "sources": ["otx", "abuse_ch"]
-      }
-    }
-  }'
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Trend analysis completed",
-  "data": {
-    "analysis_period": {
-      "start": "2024-01-01T00:00:00Z",
-      "end": "2024-01-07T00:00:00Z",
-      "total_indicators": 15420
-    },
-    "volume_trends": {
-      "daily_counts": [
-        {"date": "2024-01-01", "count": 2100, "change_pct": 15.2},
-        {"date": "2024-01-02", "count": 2350, "change_pct": 11.9}
-      ],
-      "peak_activity": {
-        "timestamp": "2024-01-03T14:00:00Z",
-        "indicator_count": 450,
-        "dominant_threat": "malware"
-      },
-      "volatility_score": 0.23
-    },
-    "threat_evolution": {
-      "emerging_threats": [
-        {
-          "threat_type": "ransomware",
-          "growth_rate": 45.2,
-          "indicator_count": 890,
-          "confidence": 85
-        }
-      ],
-      "declining_threats": [
-        {
-          "threat_type": "adware",
-          "decline_rate": -12.5,
-          "indicator_count": 120
-        }
-      ]
-    },
-    "campaign_detection": {
-      "potential_campaigns": [
-        {
-          "campaign_id": "camp-uuid",
-          "indicators_count": 245,
-          "confidence": 78,
-          "geographic_focus": ["US", "EU"],
-          "timeframe": {
-            "start": "2024-01-02T00:00:00Z",
-            "peak": "2024-01-03T12:00:00Z"
-          },
-          "threat_type": "apt"
-        }
-      ]
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00Z"
-}
-```
-
-### 6. Geographic Analysis
-
-#### POST /search (action: geographic_analysis)
-Analyze geographic distribution of threats.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "geographic_analysis",
-    "analysis_config": {
-      "clustering": {
-        "enable": true,
-        "radius_km": 100,
-        "min_cluster_size": 5
-      },
-      "regions": ["US", "EU", "APAC"],
-      "threat_types": ["malware", "phishing"],
-      "time_period": {
-        "start": "2024-01-01T00:00:00Z",
-        "end": "2024-01-07T00:00:00Z"
-      }
-    }
-  }'
-```
-
-### 7. Risk Scoring
-
-#### POST /search (action: risk_scoring)
-Generate comprehensive risk assessments.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "risk_scoring",
-    "indicators": [
-      {"type": "ip", "value": "192.168.1.1"},
-      {"type": "domain", "value": "suspicious.com"}
-    ],
-    "scoring_config": {
-      "weight_factors": {
-        "source_reliability": 0.2,
-        "temporal_relevance": 0.15,
-        "geographic_risk": 0.1,
-        "threat_severity": 0.25,
-        "correlation_strength": 0.15,
-        "consistency": 0.1,
-        "urgency": 0.05
-      },
-      "business_context": {
-        "industry": "finance",
-        "geographic_focus": ["US"],
-        "threat_tolerance": "low"
-      }
-    }
-  }'
-```
-
-### 8. Correlation Analysis
-
-#### POST /search (action: correlation_analysis)
-Discover relationships between threat indicators.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "correlation_analysis",
-    "seed_indicators": [
-      {"type": "ip", "value": "192.168.1.1"},
-      {"type": "domain", "value": "malicious.com"}
-    ],
-    "correlation_config": {
-      "max_depth": 3,
-      "min_correlation_score": 0.7,
-      "correlation_types": [
-        "infrastructure_overlap",
-        "temporal_correlation",
-        "behavioral_similarity",
-        "attribution_links"
-      ],
-      "time_window_hours": 168
-    }
-  }'
-```
-
-## Administrative Endpoints
-
-### 9. Cache Management
-
-#### POST /search (action: cache_stats)
-Get cache performance statistics.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "cache_stats",
-    "time_period": {
-      "start": "2024-01-01T00:00:00Z",
-      "end": "2024-01-02T00:00:00Z"
-    }
-  }'
-```
-
-#### POST /search (action: invalidate_cache)
-Invalidate cache entries.
-
-**Request:**
-```bash
-curl -X POST "https://API_ID.execute-api.REGION.amazonaws.com/dev/search" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "invalidate_cache",
-    "invalidation_config": {
-      "cache_types": ["query_results", "analytics"],
-      "patterns": ["otx:*", "search:domain:*"],
-      "force": false
-    }
-  }'
-```
-
-## Error Handling
-
-### Error Response Format
-```json
-{
-  "status": "error",
-  "error": {
-    "code": "INVALID_PARAMETERS",
-    "message": "Missing required parameter: ioc_value",
-    "details": {
-      "parameter": "ioc_value",
-      "expected_type": "string",
-      "provided": null
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00Z",
-  "correlation_id": "error-uuid"
-}
-```
-
-### Common Error Codes
-- `INVALID_API_KEY`: Authentication failed
-- `RATE_LIMIT_EXCEEDED`: Request rate limit exceeded
-- `INVALID_PARAMETERS`: Request validation failed
-- `RESOURCE_NOT_FOUND`: Requested resource not found
-- `PROCESSING_ERROR`: Internal processing error
-- `EXTERNAL_API_ERROR`: External service unavailable
-- `CACHE_ERROR`: Cache operation failed
-- `EXPORT_TOO_LARGE`: Export exceeds size limits
+### CORS
+CORS is enabled for web frontend integration with the following headers:
+- `Access-Control-Allow-Origin: *`
+- `Access-Control-Allow-Methods: GET, POST, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type, x-api-key`
 
 ## Rate Limiting
 
-### Rate Limit Headers
-All responses include rate limiting information:
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1609459200
-X-RateLimit-Retry-After: 60
+- **Collection Endpoint**: Maximum 10 requests per minute per API key
+- **Enrichment Endpoint**: Maximum 10 requests per minute per API key (Shodan API limits)
+- **Search Endpoint**: Maximum 100 requests per minute per API key
+
+## Endpoints
+
+### 1. POST /collect
+
+Triggers automated threat intelligence collection from configured OSINT sources.
+
+**Status**:  **FULLY OPERATIONAL** (Completed Nov 4, 2025)
+
+#### Request
+
+```http
+POST /collect
+Content-Type: application/json
+x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf
+
+{
+  "sources": ["otx", "abuse_ch"],
+  "limit": 50,
+  "collection_type": "automated",
+  "filters": {
+    "ioc_types": ["domain", "ip", "hash"],
+    "confidence": 70
+  }
+}
 ```
 
-### Rate Limit Tiers
-- **Free Tier**: 100 req/s, 1K req/day
-- **Basic Tier**: 500 req/s, 10K req/day
-- **Premium Tier**: 1K req/s, 100K req/day
-- **Enterprise Tier**: 5K req/s, unlimited daily
-- **Admin Tier**: Unlimited
+#### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `sources` | array | No | Data sources to collect from. Options: `["otx", "abuse_ch"]`. Default: `["otx", "abuse_ch"]` |
+| `limit` | integer | No | Maximum indicators to collect. Range: 1-100. Default: 50 |
+| `collection_type` | string | No | Collection mode. Options: `"automated"`, `"manual"`. Default: `"automated"` |
+| `filters` | object | No | Collection filters |
+| `filters.ioc_types` | array | No | IOC types to collect. Options: `["domain", "ip", "hash", "url"]` |
+| `filters.confidence` | integer | No | Minimum confidence score (0-100). Default: 70 |
+
+#### Response
+
+**Success (200)**:
+```json
+{
+  "message": "Collection completed successfully",
+  "indicators_collected": 48,
+  "indicators_stored": 45,
+  "collection_stats": {
+    "otx": 48,
+    "abuse_ch": 0
+  },
+  "timestamp": "2025-11-04T14:29:17.602444+00:00"
+}
+```
+
+**Error (400)**:
+```json
+{
+  "error": "Invalid request parameters",
+  "message": "Limit must be between 1 and 100",
+  "timestamp": "2025-11-04T14:29:17.602444+00:00"
+}
+```
+
+**Error (500)**:
+```json
+{
+  "error": "Collection failed",
+  "message": "Unable to connect to OTX API",
+  "timestamp": "2025-11-04T14:29:17.602444+00:00"
+}
+```
+
+#### Example Usage
+
+```bash
+curl -X POST "https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev/collect" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf" \
+  -d '{
+    "sources": ["otx"],
+    "limit": 25,
+    "filters": {
+      "ioc_types": ["domain", "ip"],
+      "confidence": 80
+    }
+  }'
+```
+
+### 2. POST /enrich
+
+Performs OSINT enrichment on provided indicators using Shodan, DNS resolution, and geolocation services.
+
+**Status**:  **FULLY OPERATIONAL** (Completed Nov 4, 2025)
+
+#### Request
+
+```http
+POST /enrich
+Content-Type: application/json
+x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf
+
+{
+  "ioc_value": "8.8.8.8",
+  "ioc_type": "ipv4"
+}
+```
+
+**Alternative format for multiple indicators**:
+```json
+{
+  "indicators": [
+    {
+      "ioc_value": "8.8.8.8",
+      "ioc_type": "ipv4"
+    },
+    {
+      "ioc_value": "example.com",
+      "ioc_type": "domain"
+    }
+  ],
+  "enrichment_types": ["shodan", "dns", "geolocation"],
+  "cache_results": true
+}
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `ioc_value` | string | Yes* | Single indicator value to enrich |
+| `ioc_type` | string | Yes* | Type of indicator. Options: `"ipv4"`, `"domain"`, `"hash"`, `"url"` |
+| `indicators` | array | Yes* | Array of indicator objects (alternative to single indicator) |
+| `enrichment_types` | array | No | Enrichment sources. Options: `["shodan", "dns", "geolocation"]`. Default: all |
+| `cache_results` | boolean | No | Cache enrichment results (7-day TTL). Default: `true` |
+
+*Either `ioc_value`/`ioc_type` OR `indicators` is required.
+
+#### Response
+
+**Success (200)**:
+```json
+{
+  "enriched_indicators": [
+    {
+      "ioc_value": "8.8.8.8",
+      "ioc_type": "ipv4",
+      "enriched_at": "2025-11-04T14:24:52.562118+00:00",
+      "sources": ["geolocation", "shodan"],
+      "geolocation": {
+        "country": "United States",
+        "country_code": "US",
+        "region": "Virginia",
+        "city": "Ashburn",
+        "latitude": 39.03,
+        "longitude": -77.5,
+        "isp": "Google LLC",
+        "org": "Google Public DNS",
+        "timezone": "America/New_York",
+        "source": "ip-api.com"
+      },
+      "shodan": {
+        "ip": "8.8.8.8",
+        "hostnames": ["dns.google"],
+        "country_code": "US",
+        "country_name": "United States",
+        "city": "Mountain View",
+        "org": "Google LLC",
+        "isp": "Google LLC",
+        "ports": [443, 53],
+        "vulns": [],
+        "last_update": "2025-11-04T09:54:36.177589",
+        "tags": [],
+        "os": null,
+        "source": "shodan",
+        "services": [
+          {
+            "port": 53,
+            "protocol": "tcp",
+            "product": null,
+            "version": null,
+            "banner": "\\nRecursion: enabled"
+          },
+          {
+            "port": 443,
+            "protocol": "tcp",
+            "product": null,
+            "version": null,
+            "banner": "HTTP/1.1 200 OK..."
+          }
+        ]
+      },
+      "risk_score": 0
+    }
+  ],
+  "total_processed": 1,
+  "timestamp": "2025-11-04T14:24:52.718668+00:00"
+}
+```
+
+**Error (400)**:
+```json
+{
+  "error": "Enrichment failed",
+  "message": "No indicators provided for enrichment",
+  "timestamp": "2025-11-04T14:24:52.718668+00:00"
+}
+```
+
+#### Risk Scoring
+
+The `risk_score` field is calculated based on:
+- **Vulnerabilities**: +20 points per CVE (max 60 points)
+- **Sensitive Ports**: +10 points for ports 22, 23, 21, 3389, 1433, 3306, 5432, 27017
+- **Geographic Risk**: +15 points for high-risk countries (CN, RU, KP, IR)
+- **Maximum Score**: 100 points
+
+#### Example Usage
+
+```bash
+curl -X POST "https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev/enrich" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf" \
+  -d '{
+    "ioc_value": "1.1.1.1",
+    "ioc_type": "ipv4"
+  }'
+```
+
+### 3. GET /search
+
+Searches stored threat intelligence data with optional filtering and pagination.
+
+**Status**:  **FULLY OPERATIONAL** (Fixed Nov 3, 2025)
+
+#### Request
+
+```http
+GET /search?q=malware&type=domain&source=otx&limit=10&confidence=80
+x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `q` | string | No | Search query (searches across IOC values and pulse names) |
+| `type` | string | No | Filter by IOC type. Options: `"domain"`, `"ip"`, `"hash"`, `"url"` |
+| `source` | string | No | Filter by data source. Options: `"otx"`, `"abuse_ch"` |
+| `limit` | integer | No | Number of results to return. Range: 1-100. Default: 20 |
+| `confidence` | integer | No | Minimum confidence score (0-100) |
+| `threat_type` | string | No | Filter by threat type |
+
+#### Response
+
+**Success (200)**:
+```json
+{
+  "action": "search",
+  "results": {
+    "results": [
+      {
+        "ioc_value": "brokeragepacket.com",
+        "pulse_name": "Remote access, real cargo: cybercriminals targeting trucking and logistics",
+        "created_at": "2025-11-03T22:18:10.014408+00:00",
+        "stix_data": {
+          "spec_version": "2.1",
+          "created": "2025-11-03T22:18:10.009829+00:00",
+          "confidence": 75.0,
+          "pattern": "[domain-name:value = 'brokeragepacket.com']",
+          "modified": "2025-11-03T22:18:10.009832+00:00",
+          "ioc_value": "brokeragepacket.com",
+          "id": "indicator--5e05c3888cf52e0b25519cf828d0d831",
+          "source": "otx",
+          "type": "indicator",
+          "ioc_type": "domain",
+          "labels": ["malicious-activity"]
+        },
+        "threat_type": "unknown",
+        "indicator_id": "indicator--5e05c3888cf52e0b25519cf828d0d831",
+        "content_hash": "d79dfc8a1da7d44bc96f2fc637f8d504169d4a7ad6298f680aa4c8c9dd74e695",
+        "object_type": "indicator",
+        "confidence": 75.0,
+        "ioc_type": "domain",
+        "source": "otx",
+        "object_id": "indicator--5e05c3888cf52e0b25519cf828d0d831"
+      }
+    ],
+    "count": 1,
+    "query": {
+      "q": "brokeragepacket",
+      "limit": 10
+    }
+  },
+  "timestamp": "2025-11-04T14:29:46.154572+00:00"
+}
+```
+
+**Empty Results (200)**:
+```json
+{
+  "action": "search",
+  "results": {
+    "results": [],
+    "count": 0,
+    "query": {
+      "q": "nonexistent",
+      "limit": 20
+    }
+  },
+  "timestamp": "2025-11-04T14:29:46.154572+00:00"
+}
+```
+
+#### Search Methods
+
+The search endpoint supports multiple search patterns:
+
+1. **General Search**: Searches across IOC values and pulse names
+2. **Type-based Search**: Filter by specific IOC types
+3. **Source-based Search**: Filter by data source
+4. **Confidence-based Search**: Filter by confidence threshold
+
+#### Example Usage
+
+```bash
+# General search
+curl -G "https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev/search" \
+  -H "x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf" \
+  -d "q=malware" \
+  -d "limit=5"
+
+# Domain-specific search
+curl -G "https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev/search" \
+  -H "x-api-key: mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf" \
+  -d "type=domain" \
+  -d "source=otx" \
+  -d "limit=10"
+```
+
+## Data Models
+
+### STIX 2.1 Compliance
+
+All threat intelligence data follows STIX 2.1 specification:
+
+```json
+{
+  "spec_version": "2.1",
+  "type": "indicator",
+  "id": "indicator--{uuid}",
+  "created": "2025-11-04T14:29:17.602444+00:00",
+  "modified": "2025-11-04T14:29:17.602444+00:00",
+  "pattern": "[domain-name:value = 'example.com']",
+  "labels": ["malicious-activity"],
+  "confidence": 75,
+  "ioc_value": "example.com",
+  "ioc_type": "domain",
+  "source": "otx"
+}
+```
+
+### IOC Types
+
+Supported Indicator of Compromise types:
+
+| Type | Description | Pattern Example |
+|------|-------------|-----------------|
+| `domain` | Domain names | `[domain-name:value = 'example.com']` |
+| `ipv4` | IPv4 addresses | `[ipv4-addr:value = '192.168.1.1']` |
+| `hash` | File hashes (MD5, SHA1, SHA256) | `[file:hashes.MD5 = 'abc123...']` |
+| `url` | URLs | `[url:value = 'https://example.com/path']` |
+
+## Error Handling
+
+### HTTP Status Codes
+
+| Code | Meaning | Description |
+|------|---------|-------------|
+| 200 | Success | Request completed successfully |
+| 400 | Bad Request | Invalid request parameters |
+| 401 | Unauthorized | Invalid or missing API key |
+| 429 | Too Many Requests | Rate limit exceeded |
+| 500 | Internal Server Error | Server-side error occurred |
+
+### Error Response Format
+
+```json
+{
+  "error": "Error category",
+  "message": "Detailed error description",
+  "timestamp": "2025-11-04T14:29:17.602444+00:00",
+  "details": {
+    "parameter": "limit",
+    "received": 150,
+    "expected": "1-100"
+  }
+}
+```
+
+### Common Error Messages
+
+#### Authentication Errors
+- `"Invalid API key"` - API key is incorrect or revoked
+- `"Missing API key"` - x-api-key header not provided
+
+#### Rate Limiting Errors
+- `"Rate limit exceeded"` - Too many requests in time window
+- `"Quota exceeded"` - Daily/monthly quota reached
+
+#### Validation Errors
+- `"Invalid IOC type"` - Unsupported IOC type provided
+- `"Invalid parameter format"` - Parameter format is incorrect
+- `"Missing required parameters"` - Required fields not provided
 
 ## SDK Examples
 
-### Python SDK
+### Python
+
 ```python
 import requests
-import json
 
 class ThreatIntelAPI:
-    def __init__(self, api_key, base_url):
+    def __init__(self, api_key):
         self.api_key = api_key
-        self.base_url = base_url
+        self.base_url = "https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev"
         self.headers = {
-            'x-api-key': api_key,
-            'Content-Type': 'application/json'
+            "Content-Type": "application/json",
+            "x-api-key": api_key
         }
 
-    def search_indicators(self, query):
-        payload = {
-            'action': 'search',
-            'query': query
-        }
+    def collect_threats(self, sources=["otx"], limit=50):
         response = requests.post(
-            f"{self.base_url}/search",
+            f"{self.base_url}/collect",
             headers=self.headers,
-            json=payload
+            json={"sources": sources, "limit": limit}
         )
         return response.json()
 
-    def enrich_indicator(self, indicator_type, indicator_value):
-        payload = {
-            'indicators': [{'type': indicator_type, 'value': indicator_value}],
-            'enrichment_types': ['geolocation', 'reputation', 'dns_analysis']
-        }
+    def enrich_ioc(self, ioc_value, ioc_type):
         response = requests.post(
             f"{self.base_url}/enrich",
             headers=self.headers,
-            json=payload
+            json={"ioc_value": ioc_value, "ioc_type": ioc_type}
+        )
+        return response.json()
+
+    def search_threats(self, query=None, ioc_type=None, limit=20):
+        params = {"limit": limit}
+        if query:
+            params["q"] = query
+        if ioc_type:
+            params["type"] = ioc_type
+
+        response = requests.get(
+            f"{self.base_url}/search",
+            headers={"x-api-key": self.api_key},
+            params=params
         )
         return response.json()
 
 # Usage
-api = ThreatIntelAPI('your-api-key', 'https://api-id.execute-api.region.amazonaws.com/dev')
-results = api.search_indicators({'ioc_value': 'malicious.com', 'ioc_type': 'domain'})
+api = ThreatIntelAPI("mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf")
+threats = api.collect_threats(sources=["otx"], limit=25)
+enrichment = api.enrich_ioc("8.8.8.8", "ipv4")
+search_results = api.search_threats(query="malware", limit=10)
 ```
 
-### JavaScript/Node.js SDK
+### JavaScript
+
 ```javascript
 class ThreatIntelAPI {
-    constructor(apiKey, baseUrl) {
+    constructor(apiKey) {
         this.apiKey = apiKey;
-        this.baseUrl = baseUrl;
+        this.baseUrl = "https://u88kzux168.execute-api.us-east-1.amazonaws.com/dev";
     }
 
-    async searchIndicators(query) {
-        const response = await fetch(`${this.baseUrl}/search`, {
+    async collectThreats(sources = ["otx"], limit = 50) {
+        const response = await fetch(`${this.baseUrl}/collect`, {
             method: 'POST',
             headers: {
-                'x-api-key': this.apiKey,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'x-api-key': this.apiKey
             },
-            body: JSON.stringify({
-                action: 'search',
-                query: query
-            })
+            body: JSON.stringify({ sources, limit })
         });
-        return await response.json();
+        return response.json();
     }
 
-    async enrichIndicator(type, value) {
+    async enrichIOC(iocValue, iocType) {
         const response = await fetch(`${this.baseUrl}/enrich`, {
             method: 'POST',
             headers: {
-                'x-api-key': this.apiKey,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'x-api-key': this.apiKey
             },
             body: JSON.stringify({
-                indicators: [{type, value}],
-                enrichment_types: ['geolocation', 'reputation', 'dns_analysis']
+                ioc_value: iocValue,
+                ioc_type: iocType
             })
         });
-        return await response.json();
+        return response.json();
+    }
+
+    async searchThreats(query = null, iocType = null, limit = 20) {
+        const params = new URLSearchParams({ limit });
+        if (query) params.append('q', query);
+        if (iocType) params.append('type', iocType);
+
+        const response = await fetch(`${this.baseUrl}/search?${params}`, {
+            headers: { 'x-api-key': this.apiKey }
+        });
+        return response.json();
     }
 }
 
 // Usage
-const api = new ThreatIntelAPI('your-api-key', 'https://api-id.execute-api.region.amazonaws.com/dev');
-const results = await api.searchIndicators({ioc_value: 'malicious.com', ioc_type: 'domain'});
+const api = new ThreatIntelAPI("mhxJBeDRDP515dkUrivFZ2B9IWY1Khx3cQkUh7jf");
+const threats = await api.collectThreats(["otx"], 25);
+const enrichment = await api.enrichIOC("8.8.8.8", "ipv4");
+const searchResults = await api.searchThreats("malware", null, 10);
 ```
 
-## Testing & Development
+## Changelog
 
-### API Testing with curl
-```bash
-# Test API connectivity
-curl -X GET "https://API_ID.execute-api.REGION.amazonaws.com/dev/collect" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -w "\nHTTP Status: %{http_code}\nResponse Time: %{time_total}s\n"
+### Version 1.0 (November 4, 2025)
+-  **API Gateway Base64 Issue Resolution**: Fixed systematic JSON parsing errors across all POST endpoints
+-  **Complete Endpoint Functionality**: All three endpoints (collect, enrich, search) fully operational
+-  **Enhanced Documentation**: Comprehensive API reference with examples and SDK code
+-  **Verified Integration**: End-to-end testing confirmed with live data collection and enrichment
 
-# Test rate limiting
-for i in {1..110}; do
-  curl -s -o /dev/null -w "%{http_code} " \
-    "https://API_ID.execute-api.REGION.amazonaws.com/dev/collect" \
-    -H "x-api-key: YOUR_API_KEY"
-done
-```
+### Previous Versions
+- **November 3, 2025**: Initial deployment with search endpoint functionality
+- **November 3, 2025**: OTX collection integration and DynamoDB storage
+- **October 31, 2025**: Infrastructure deployment and Lambda function setup
 
-### Postman Collection
-Import the API collection for interactive testing:
-```json
-{
-  "info": {
-    "name": "Threat Intelligence Platform API",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "auth": {
-    "type": "apikey",
-    "apikey": [
-      {"key": "key", "value": "x-api-key"},
-      {"key": "value", "value": "{{API_KEY}}"}
-    ]
-  },
-  "variable": [
-    {"key": "BASE_URL", "value": "https://API_ID.execute-api.REGION.amazonaws.com/dev"}
-  ]
-}
-```
+## Support
+
+For technical support, API questions, or to report issues:
+- **Documentation**: [Project Repository](https://github.com/user/threat-intel-platform)
+- **Status Page**: All endpoints monitored with 99.9% uptime target
+- **Rate Limit Increases**: Contact support for higher rate limits
 
 ---
 
-For additional support or API questions, consult the TROUBLESHOOTING.md guide or check CloudWatch logs for detailed error analysis.
+**Last Updated**: November 4, 2025
+**API Version**: 1.0
+**Status**:  All endpoints operational
