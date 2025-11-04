@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threat Intelligence API Test</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      cursor: pointer;
+      margin: 0.5rem;
+    }
+    button:hover { background: #2563eb; }
+    button:disabled { background: #64748b; cursor: not-allowed; }
+    .error { color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 1rem; border-radius: 0.375rem; }
+    .success { color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 1rem; border-radius: 0.375rem; }
+    .loading { color: #f59e0b; }
+    pre {
+      background: rgba(71, 85, 105, 0.1);
+      padding: 1rem;
+      border-radius: 0.375rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    .test-section {
+      margin: 2rem 0;
+      padding: 1rem;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>🛡️ Threat Intelligence API Test</h1>
+    <p>Testing connectivity to the live threat intelligence platform API</p>
+
+    <div class="test-section">
+      <h2>🔍 Search Threats</h2>
+      <button id="searchBtn">Search Threats (limit: 5)</button>
+      <div id="searchStatus"></div>
+      <pre id="searchData"></pre>
+    </div>
+
+    <div class="test-section">
+      <h2>📥 Collect Threats</h2>
+      <button id="collectBtn">Start OTX Collection</button>
+      <div id="collectStatus"></div>
+      <pre id="collectData"></pre>
+    </div>
+
+    <div class="test-section">
+      <h2>🔬 Enrich Indicator</h2>
+      <input type="text" id="indicatorInput" placeholder="Enter IP or domain (e.g., 1.1.1.1)"
+             style="background: #1e293b; color: #f8fafc; border: 1px solid #475569; padding: 0.5rem; border-radius: 0.375rem; margin-right: 0.5rem;">
+      <button id="enrichBtn">Enrich Indicator</button>
+      <div id="enrichStatus"></div>
+      <pre id="enrichData"></pre>
+    </div>
+  </div>
+
+  <script type="module" src="/src/api-test.ts"></script>
+</body>
+</html>
