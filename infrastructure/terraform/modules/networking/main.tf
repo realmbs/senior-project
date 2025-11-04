@@ -624,6 +624,106 @@ resource "aws_api_gateway_integration_response" "collect_options_integration_res
   }
 }
 
+# CORS for /search
+resource "aws_api_gateway_method" "search_options" {
+  count         = var.enable_cors ? 1 : 0
+  rest_api_id   = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id   = aws_api_gateway_resource.search.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "search_options_integration" {
+  count       = var.enable_cors ? 1 : 0
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_options[0].http_method
+
+  type = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "search_options_response" {
+  count       = var.enable_cors ? 1 : 0
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_options[0].http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "search_options_integration_response" {
+  count       = var.enable_cors ? 1 : 0
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_options[0].http_method
+  status_code = aws_api_gateway_method_response.search_options_response[0].status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# CORS for /enrich
+resource "aws_api_gateway_method" "enrich_options" {
+  count         = var.enable_cors ? 1 : 0
+  rest_api_id   = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id   = aws_api_gateway_resource.enrich.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "enrich_options_integration" {
+  count       = var.enable_cors ? 1 : 0
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.enrich.id
+  http_method = aws_api_gateway_method.enrich_options[0].http_method
+
+  type = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "enrich_options_response" {
+  count       = var.enable_cors ? 1 : 0
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.enrich.id
+  http_method = aws_api_gateway_method.enrich_options[0].http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "enrich_options_integration_response" {
+  count       = var.enable_cors ? 1 : 0
+  rest_api_id = aws_api_gateway_rest_api.threat_intel_api.id
+  resource_id = aws_api_gateway_resource.enrich.id
+  http_method = aws_api_gateway_method.enrich_options[0].http_method
+  status_code = aws_api_gateway_method_response.enrich_options_response[0].status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
 # =============================================================================
 # API Gateway Lambda Permissions
 # =============================================================================
@@ -670,6 +770,10 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.collect_integration.id,
       aws_api_gateway_integration.enrich_integration.id,
       aws_api_gateway_integration.search_integration.id,
+      # CORS methods for redeployment
+      var.enable_cors ? aws_api_gateway_method.collect_options[0].id : "",
+      var.enable_cors ? aws_api_gateway_method.search_options[0].id : "",
+      var.enable_cors ? aws_api_gateway_method.enrich_options[0].id : "",
     ]))
   }
 

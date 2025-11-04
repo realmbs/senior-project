@@ -87,18 +87,18 @@ export const dashboardActions = {
     }));
 
     try {
-      // Get total threat count
+      // Get total threat count by searching for all indicators
+      console.log('Dashboard: Fetching metrics...');
       const threatsResponse = await ThreatIntelAPI.search.searchThreats({
-        q: 'threat',
         limit: 1
       });
+      console.log('Dashboard: Threats response:', threatsResponse);
 
       // Get enriched IOCs count (simplified - using same search for now)
       const enrichedResponse = await ThreatIntelAPI.search.searchThreats({
-        q: 'ip',
-        limit: 1,
-        type: 'ip'
+        limit: 1
       });
+      console.log('Dashboard: Enriched response:', enrichedResponse);
 
       // Use API data if available, otherwise fallback to demo data
       const metrics = {
@@ -107,6 +107,8 @@ export const dashboardActions = {
         iocsEnriched: enrichedResponse.total || 892, // Fallback to demo data
         uptime: 99.97, // This would come from a health endpoint
       };
+
+      console.log('Dashboard: Final metrics:', metrics);
 
       dashboardStore.update(state => ({
         ...state,
@@ -134,12 +136,15 @@ export const dashboardActions = {
     }));
 
     try {
+      console.log('Dashboard: Fetching recent threats...');
       const response = await ThreatIntelAPI.search.getRecentThreats(5);
+      console.log('Dashboard: Recent threats response:', response);
 
       // Transform API response to ThreatIndicator format, or use fallback data
       let recentThreats: ThreatIndicator[] = [];
 
       if (response.results && response.results.length > 0) {
+        console.log('Dashboard: Using API data for recent threats');
         recentThreats = response.results.map(result => ({
           id: result.id,
           type: result.type as any,
@@ -152,6 +157,7 @@ export const dashboardActions = {
           stix_data: result.stix_data,
         }));
       } else {
+        console.log('Dashboard: Using fallback demo data for recent threats');
         // Fallback demo data when API returns empty results
         recentThreats = [
           {
@@ -217,7 +223,7 @@ export const dashboardActions = {
 
     try {
       // For now, just test API connectivity by making a simple search call
-      await ThreatIntelAPI.search.searchThreats({ q: 'test', limit: 1 });
+      await ThreatIntelAPI.search.searchThreats({ limit: 1 });
 
       const systemStatus: SystemStatus = {
         api_gateway: 'healthy',

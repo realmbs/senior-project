@@ -30,7 +30,7 @@ export interface EnrichmentResponse {
 }
 
 export interface SearchParams {
-  q: string;
+  q?: string;
   type?: string;
   limit?: number;
   confidence?: number;
@@ -48,6 +48,25 @@ export interface SearchResponse {
   }>;
   total: number;
   page: number;
+}
+
+// Backend API response format (actual format from the API)
+interface BackendSearchResponse {
+  action: string;
+  results: {
+    results: Array<{
+      indicator_id: string;
+      ioc_type: string;
+      ioc_value: string;
+      confidence: number;
+      source: string;
+      created_at: string;
+      stix_data: Record<string, unknown>;
+    }>;
+    count: number;
+    query: Record<string, unknown>;
+  };
+  timestamp: string;
 }
 
 /**
@@ -87,23 +106,47 @@ export class EnrichmentService {
  * Handles GET /search requests for querying stored threat data
  */
 export class SearchService {
+  // Helper method to transform backend response to frontend format
+  private static transformSearchResponse(backendResponse: BackendSearchResponse): SearchResponse {
+    console.log('SearchService: Transforming backend response:', backendResponse);
+
+    const transformed = {
+      results: backendResponse.results.results.map(item => ({
+        id: item.indicator_id,
+        type: item.ioc_type,
+        value: item.ioc_value,
+        confidence: item.confidence,
+        source: item.source,
+        created_at: item.created_at,
+        stix_data: item.stix_data,
+      })),
+      total: backendResponse.results.count,
+      page: 1, // Backend doesn't provide pagination info currently
+    };
+
+    console.log('SearchService: Transformed response:', transformed);
+    return transformed;
+  }
+
   static async searchThreats(params: SearchParams): Promise<SearchResponse> {
-    const response: AxiosResponse<SearchResponse> = await apiClient.get('/search', { params });
-    return response.data;
+    console.log('SearchService: Making request with params:', params);
+    const response: AxiosResponse<BackendSearchResponse> = await apiClient.get('/search', { params });
+    console.log('SearchService: Raw response:', response.data);
+    return this.transformSearchResponse(response.data);
   }
 
   static async getRecentThreats(limit: number = 10): Promise<SearchResponse> {
-    const response: AxiosResponse<SearchResponse> = await apiClient.get('/search', {
+    const response: AxiosResponse<BackendSearchResponse> = await apiClient.get('/search', {
       params: { limit, sort: 'created_at:desc' }
     });
-    return response.data;
+    return this.transformSearchResponse(response.data);
   }
 
   static async getThreatByType(type: string, limit: number = 50): Promise<SearchResponse> {
-    const response: AxiosResponse<SearchResponse> = await apiClient.get('/search', {
+    const response: AxiosResponse<BackendSearchResponse> = await apiClient.get('/search', {
       params: { type, limit }
     });
-    return response.data;
+    return this.transformSearchResponse(response.data);
   }
 }
 

@@ -17,8 +17,20 @@
 
   // Load dashboard data on component mount
   onMount(() => {
+    console.log('Dashboard page: onMount triggered, loading dashboard data...');
     dashboardActions.loadDashboard();
   });
+
+  // Reactive debugging
+  $: {
+    console.log('Dashboard reactive update:');
+    console.log('  - Metrics loading:', $metricsStore.loading);
+    console.log('  - Metrics error:', $metricsStore.error);
+    console.log('  - Metrics data:', $metricsStore.data);
+    console.log('  - Recent threats loading:', $recentThreatsStore.loading);
+    console.log('  - Recent threats error:', $recentThreatsStore.error);
+    console.log('  - Recent threats count:', $recentThreatsStore.data.length);
+  }
 
   // Helper function to format numbers with commas
   function formatNumber(num: number): string {
