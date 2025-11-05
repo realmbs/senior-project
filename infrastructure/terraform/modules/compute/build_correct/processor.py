@@ -221,8 +221,8 @@ def search_indicators(query: Dict[str, Any]) -> Dict[str, Any]:
 
             # Add filter conditions for ioc_value if provided
             if 'ioc_value' in query:
-                scan_filter['pattern'] = {
-                    'AttributeValueList': [f"*{query['ioc_value']}*"],
+                scan_filter['ioc_value'] = {
+                    'AttributeValueList': [query['ioc_value']],
                     'ComparisonOperator': 'CONTAINS'
                 }
 

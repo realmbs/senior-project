@@ -604,7 +604,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.setSearchButtonLoading(searchBtn, true);
 
     try {
-      const response = await this.apiCall(`/search?query=${encodeURIComponent(query)}&limit=10`);
+      const response = await this.apiCall(`/search?q=${encodeURIComponent(query)}&limit=10`);
 
       if (response.ok) {
         const data: SearchResponse = await response.json();
