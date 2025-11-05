@@ -78,8 +78,12 @@ export class MetricsWidget extends Component<MetricsWidgetState> {
     // Add to element
     this.element.appendChild(container);
 
-    // Refresh icons
-    this.refreshIcons();
+    // Refresh icons with error handling
+    try {
+      this.refreshIcons();
+    } catch (error) {
+      console.warn('Icon refresh failed for metrics widget:', error);
+    }
   }
 
   private setupObservers(): void {

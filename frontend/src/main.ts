@@ -65,16 +65,24 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   private async init(): Promise<void> {
     console.log('🛡️ Initializing Threat Intelligence Dashboard...');
 
-    this.render();
-    this.setupEventListeners();
+    try {
+      this.render();
+      console.log('✅ Render completed');
 
-    // Load initial data
-    await this.loadDashboardData();
+      this.setupEventListeners();
+      console.log('✅ Event listeners setup completed');
 
-    // Set up auto-refresh every 5 minutes
-    this.refreshInterval = window.setInterval(() => this.loadDashboardData(), 5 * 60 * 1000);
+      // Load initial data
+      await this.loadDashboardData();
+      console.log('✅ Initial data load completed');
 
-    console.log('✅ Dashboard initialized successfully');
+      // Set up auto-refresh every 5 minutes
+      this.refreshInterval = window.setInterval(() => this.loadDashboardData(), 5 * 60 * 1000);
+
+      console.log('✅ Dashboard initialized successfully');
+    } catch (error) {
+      console.error('❌ Dashboard initialization failed:', error);
+    }
   }
 
   render(): void {
@@ -418,6 +426,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   }
 
   private initializeComponents(): void {
+    console.log('🔧 Initializing components...');
+
     // Initialize metrics widgets
     const metricConfigs = [
       { id: 'total-threats', label: 'Total Threats', icon: 'alert-triangle', color: 'red' as const },
@@ -429,16 +439,24 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     metricConfigs.forEach(config => {
       const container = this.querySelector(`#${config.id}-container`);
       if (container) {
+        console.log(`✅ Creating ${config.id} widget`);
         const widget = new MetricsWidget(container, config.label, config.icon, config.color);
         this.metricsWidgets.set(config.id, widget);
+      } else {
+        console.error(`❌ Container not found: ${config.id}-container`);
       }
     });
 
     // Initialize threat list
     const threatsContainer = this.querySelector('#threats-list');
     if (threatsContainer) {
+      console.log('✅ Creating threat list component');
       this.threatList = new ThreatList(threatsContainer, (ioc) => this.handleThreatClick(ioc));
+    } else {
+      console.error('❌ Threats container not found: #threats-list');
     }
+
+    console.log(`✅ Components initialized: ${this.metricsWidgets.size} widgets, threat list: ${this.threatList ? 'yes' : 'no'}`);
   }
 
   private handleThreatClick(ioc: string): void {
@@ -486,6 +504,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   private async loadDashboardData(): Promise<void> {
     if (this.state.isLoading) return;
 
+    console.log('📊 Loading dashboard data...');
     this.setState({ isLoading: true, apiStatus: 'connecting' });
 
     try {
@@ -493,14 +512,17 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       this.updateApiStatus('connecting');
 
       // Load recent threats (last 50)
+      console.log('📡 Making API call to /search?limit=50');
       const response = await this.apiCall('/search?limit=50');
 
       if (response.ok) {
         const data: SearchResponse = await response.json();
         const threats = data.results.results || [];
+        console.log(`✅ Loaded ${threats.length} threats from API`);
 
         // Calculate metrics
         const metricsData = this.calculateMetrics(threats);
+        console.log('📈 Calculated metrics:', metricsData);
 
         // Update state
         this.setState({
@@ -511,14 +533,16 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
         });
 
         // Update components
+        console.log('🔄 Updating components...');
         this.updateMetricsDisplay();
         this.updateThreatsDisplay();
         this.updateApiStatus('connected');
+        console.log('✅ Dashboard data loaded successfully');
       } else {
         throw new Error(`API Error: ${response.status}`);
       }
     } catch (error) {
-      console.error('Failed to load dashboard data:', error);
+      console.error('❌ Failed to load dashboard data:', error);
       this.setState({ isLoading: false, apiStatus: 'error' });
       this.updateApiStatus('error');
       this.showNotification('Failed to load dashboard data', 'error');

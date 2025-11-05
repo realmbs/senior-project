@@ -199,13 +199,17 @@ export abstract class Component<T extends ComponentState = ComponentState> {
    * Refresh Lucide icons within component
    */
   protected refreshIcons(): void {
-    if (window.lucide) {
-      // Only refresh icons within this component's element
-      window.lucide.createIcons({
-        icons: {},
-        nameAttr: 'data-lucide',
-        nodes: this.element.querySelectorAll('[data-lucide]')
-      });
+    if (window.lucide && window.lucide.createIcons) {
+      try {
+        // For CDN version, just call createIcons() without parameters on specific nodes
+        const iconNodes = this.element.querySelectorAll('[data-lucide]');
+        if (iconNodes.length > 0) {
+          // CDN version expects simpler call
+          window.lucide.createIcons();
+        }
+      } catch (error) {
+        console.warn('Lucide icons refresh failed:', error);
+      }
     }
   }
 }
