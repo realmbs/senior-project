@@ -761,7 +761,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.metricsWidgets.get('total-threats')?.updateValue(metricsData.totalThreats);
     this.metricsWidgets.get('high-risk')?.updateValue(metricsData.highRiskThreats);
     this.metricsWidgets.get('recent-activity')?.updateValue(metricsData.recentActivity);
-    this.metricsWidgets.get('data-sources')?.updateValue(metricsData.topSources.length);
+    // Count threat feeds dynamically + 2 enrichment sources (Shodan, IP Geolocation)
+    this.metricsWidgets.get('data-sources')?.updateValue(metricsData.topSources.length + 2);
   }
 
   private updateThreatsDisplay(): void {
@@ -1904,31 +1905,42 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     overviewTitle.appendChild(DOMBuilder.createElement('span', { textContent: 'Overview' }));
 
     const overviewStats = DOMBuilder.createElement('div', {
-      className: 'grid grid-cols-2 gap-4 text-sm'
+      className: 'grid grid-cols-3 gap-4 text-sm'
     });
 
     const totalSources = DOMBuilder.createElement('div');
     totalSources.appendChild(DOMBuilder.createElement('div', {
       className: 'text-gray-400',
-      textContent: 'Active Sources:'
+      textContent: 'Threat Feeds:'
     }));
     totalSources.appendChild(DOMBuilder.createElement('div', {
       className: 'text-white font-semibold text-lg',
       textContent: sources.length.toString()
     }));
 
-    const totalThreats = DOMBuilder.createElement('div');
-    totalThreats.appendChild(DOMBuilder.createElement('div', {
+    const totalEnrichment = DOMBuilder.createElement('div');
+    totalEnrichment.appendChild(DOMBuilder.createElement('div', {
       className: 'text-gray-400',
-      textContent: 'Total Indicators:'
+      textContent: 'Enrichment:'
     }));
-    totalThreats.appendChild(DOMBuilder.createElement('div', {
+    totalEnrichment.appendChild(DOMBuilder.createElement('div', {
       className: 'text-white font-semibold text-lg',
-      textContent: recentThreats.length.toString()
+      textContent: '2'
+    }));
+
+    const totalAllSources = DOMBuilder.createElement('div');
+    totalAllSources.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-gray-400',
+      textContent: 'Total Sources:'
+    }));
+    totalAllSources.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-white font-semibold text-lg',
+      textContent: (sources.length + 2).toString()
     }));
 
     overviewStats.appendChild(totalSources);
-    overviewStats.appendChild(totalThreats);
+    overviewStats.appendChild(totalEnrichment);
+    overviewStats.appendChild(totalAllSources);
     overviewSection.appendChild(overviewTitle);
     overviewSection.appendChild(overviewStats);
     content.appendChild(overviewSection);
@@ -1940,7 +1952,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       className: 'text-lg font-semibold text-white mb-3 flex items-center space-x-2'
     });
     sourcesTitle.appendChild(DOMBuilder.createIcon('list', 'w-4 h-4'));
-    sourcesTitle.appendChild(DOMBuilder.createElement('span', { textContent: 'Connected Sources' }));
+    sourcesTitle.appendChild(DOMBuilder.createElement('span', { textContent: 'Threat Intelligence Feeds' }));
     sourcesSection.appendChild(sourcesTitle);
 
     // Source details
@@ -2015,6 +2027,81 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     sourcesSection.appendChild(sourcesList);
     content.appendChild(sourcesSection);
+
+    // Enrichment Sources section
+    const enrichmentSection = DOMBuilder.createElement('div');
+
+    const enrichmentTitle = DOMBuilder.createElement('h3', {
+      className: 'text-lg font-semibold text-white mb-3 flex items-center space-x-2'
+    });
+    enrichmentTitle.appendChild(DOMBuilder.createIcon('globe', 'w-4 h-4'));
+    enrichmentTitle.appendChild(DOMBuilder.createElement('span', { textContent: 'Enrichment Sources' }));
+    enrichmentSection.appendChild(enrichmentTitle);
+
+    const enrichmentList = DOMBuilder.createElement('div', {
+      className: 'space-y-3'
+    });
+
+    const enrichmentSources = [
+      {
+        name: 'Shodan',
+        description: 'Internet-connected device intelligence, open ports, services, and vulnerabilities',
+        icon: 'server',
+        url: 'https://www.shodan.io',
+        badge: 'Active'
+      },
+      {
+        name: 'IP Geolocation',
+        description: 'Geographic location, ISP, and organization data for IP addresses',
+        icon: 'map-pin',
+        url: 'https://ip-api.com',
+        badge: 'Active'
+      }
+    ];
+
+    enrichmentSources.forEach(enrichSource => {
+      const enrichCard = DOMBuilder.createElement('div', {
+        className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
+      });
+
+      const enrichHeader = DOMBuilder.createElement('div', {
+        className: 'flex items-start justify-between mb-2'
+      });
+
+      const enrichLeft = DOMBuilder.createElement('div', {
+        className: 'flex items-center space-x-3'
+      });
+
+      const enrichIconContainer = DOMBuilder.createElement('div', {
+        className: 'p-2 bg-purple-500/20 rounded-lg'
+      });
+      enrichIconContainer.appendChild(DOMBuilder.createIcon(enrichSource.icon, 'w-5 h-5 text-purple-400'));
+
+      const enrichNameContainer = DOMBuilder.createElement('div');
+      enrichNameContainer.appendChild(DOMBuilder.createElement('h4', {
+        className: 'font-semibold text-white',
+        textContent: enrichSource.name
+      }));
+      enrichNameContainer.appendChild(DOMBuilder.createElement('p', {
+        className: 'text-xs text-gray-400',
+        textContent: enrichSource.description
+      }));
+
+      enrichLeft.appendChild(enrichIconContainer);
+      enrichLeft.appendChild(enrichNameContainer);
+
+      const enrichBadge = DOMBuilder.createBadge(enrichSource.badge, 'blue');
+
+      enrichHeader.appendChild(enrichLeft);
+      enrichHeader.appendChild(enrichBadge);
+
+      enrichCard.appendChild(enrichHeader);
+
+      enrichmentList.appendChild(enrichCard);
+    });
+
+    enrichmentSection.appendChild(enrichmentList);
+    content.appendChild(enrichmentSection);
 
     // Assemble modal
     modal.appendChild(header);
