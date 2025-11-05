@@ -511,9 +511,9 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       // Update API status
       this.updateApiStatus('connecting');
 
-      // Load recent threats (last 50)
-      console.log('📡 Making API call to /search?limit=50');
-      const response = await this.apiCall('/search?limit=50');
+      // Load recent threats (all available)
+      console.log('📡 Making API call to /search?limit=200');
+      const response = await this.apiCall('/search?limit=200');
 
       if (response.ok) {
         const data: SearchResponse = await response.json();
