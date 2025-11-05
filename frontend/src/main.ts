@@ -4,6 +4,7 @@ import { Component } from './lib/component.js';
 import { MetricsWidget } from './components/metrics-widget.js';
 import { ThreatList } from './components/threat-list.js';
 import type { ThreatIndicator } from './components/threat-card.js';
+import { enrichIndicator, detectIocType, type EnrichmentResponse } from './lib/api.js';
 
 // API Configuration
 const API_CONFIG = {
@@ -1070,6 +1071,10 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       }
     }
 
+    // Enrichment section (Shodan data)
+    const enrichmentSection = this.createEnrichmentSection();
+    content.appendChild(enrichmentSection);
+
     // Raw JSON (expandable)
     const rawSection = this.createRawDataSection(threat);
     content.appendChild(rawSection);
@@ -1084,6 +1089,9 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     // Refresh icons and setup close handlers
     this.refreshIcons();
+
+    // Fetch enrichment data asynchronously
+    this.fetchEnrichmentData(threat);
 
     // Close on button click
     closeButton.addEventListener('click', () => this.closeThreatDetailsModal());
@@ -1198,6 +1206,264 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     });
 
     return section;
+  }
+
+  private createEnrichmentSection(): HTMLElement {
+    const section = DOMBuilder.createElement('div', {
+      id: 'enrichment-section',
+      className: 'border-t border-gray-700 pt-6'
+    });
+
+    const header = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2 mb-3'
+    });
+    header.appendChild(DOMBuilder.createIcon('globe', 'w-5 h-5 text-blue-400'));
+    header.appendChild(DOMBuilder.createElement('h3', {
+      className: 'text-lg font-semibold text-white',
+      textContent: 'Enrichment Data'
+    }));
+
+    const content = DOMBuilder.createElement('div', {
+      id: 'enrichment-content',
+      className: 'space-y-4'
+    });
+
+    // Loading state
+    const loadingState = DOMBuilder.createElement('div', {
+      id: 'enrichment-loading',
+      className: 'flex items-center space-x-3 text-gray-400'
+    });
+    loadingState.appendChild(DOMBuilder.createElement('div', {
+      className: 'animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400'
+    }));
+    loadingState.appendChild(DOMBuilder.createElement('span', {
+      textContent: 'Fetching enrichment data from Shodan...'
+    }));
+
+    content.appendChild(loadingState);
+
+    section.appendChild(header);
+    section.appendChild(content);
+
+    return section;
+  }
+
+  private async fetchEnrichmentData(threat: ThreatIndicator): Promise<void> {
+    try {
+      // Detect IOC type and fetch enrichment data
+      const iocType = detectIocType(threat.ioc_value);
+      console.log(`🔍 Enriching ${iocType}: ${threat.ioc_value}`);
+
+      const enrichmentData = await enrichIndicator(threat.ioc_value, iocType);
+      console.log('✅ Enrichment data received:', enrichmentData);
+
+      // Update the enrichment section with data
+      this.displayEnrichmentData(enrichmentData);
+    } catch (error) {
+      console.error('❌ Failed to fetch enrichment data:', error);
+      this.displayEnrichmentError();
+    }
+  }
+
+  private displayEnrichmentData(data: EnrichmentResponse): void {
+    const contentContainer = document.getElementById('enrichment-content');
+    if (!contentContainer) return;
+
+    DOMBuilder.clearChildren(contentContainer);
+
+    if (!data.enriched_indicators || data.enriched_indicators.length === 0) {
+      contentContainer.appendChild(DOMBuilder.createElement('p', {
+        className: 'text-gray-400 text-sm',
+        textContent: 'No enrichment data available for this indicator.'
+      }));
+      return;
+    }
+
+    const enriched = data.enriched_indicators[0];
+
+    // Geolocation section
+    if (enriched.geolocation) {
+      const geoSection = this.createEnrichmentSubsection('Geolocation', 'map-pin', [
+        { label: 'Country', value: `${enriched.geolocation.country} (${enriched.geolocation.country_code})` },
+        { label: 'City', value: `${enriched.geolocation.city}, ${enriched.geolocation.region}` },
+        { label: 'Coordinates', value: `${enriched.geolocation.latitude}, ${enriched.geolocation.longitude}` },
+        { label: 'ISP', value: enriched.geolocation.isp },
+        { label: 'Organization', value: enriched.geolocation.org },
+        { label: 'Timezone', value: enriched.geolocation.timezone }
+      ]);
+      contentContainer.appendChild(geoSection);
+    }
+
+    // Shodan section
+    if (enriched.shodan) {
+      const shodanFields: Array<{label: string, value: string}> = [
+        { label: 'IP Address', value: enriched.shodan.ip },
+        { label: 'Country', value: `${enriched.shodan.country_name} (${enriched.shodan.country_code})` },
+        { label: 'City', value: enriched.shodan.city },
+        { label: 'Organization', value: enriched.shodan.org },
+        { label: 'ISP', value: enriched.shodan.isp }
+      ];
+
+      if (enriched.shodan.os) {
+        shodanFields.push({ label: 'Operating System', value: enriched.shodan.os });
+      }
+
+      if (enriched.shodan.hostnames && enriched.shodan.hostnames.length > 0) {
+        shodanFields.push({ label: 'Hostnames', value: enriched.shodan.hostnames.join(', ') });
+      }
+
+      if (enriched.shodan.ports && enriched.shodan.ports.length > 0) {
+        shodanFields.push({ label: 'Open Ports', value: enriched.shodan.ports.join(', ') });
+      }
+
+      if (enriched.shodan.tags && enriched.shodan.tags.length > 0) {
+        shodanFields.push({ label: 'Tags', value: enriched.shodan.tags.join(', ') });
+      }
+
+      if (enriched.shodan.vulns && enriched.shodan.vulns.length > 0) {
+        shodanFields.push({ label: 'Vulnerabilities', value: enriched.shodan.vulns.join(', ') });
+      }
+
+      const shodanSection = this.createEnrichmentSubsection('Shodan Intelligence', 'server', shodanFields);
+      contentContainer.appendChild(shodanSection);
+
+      // Services section (if available)
+      if (enriched.shodan.services && enriched.shodan.services.length > 0) {
+        const servicesSection = this.createServicesSection(enriched.shodan.services);
+        contentContainer.appendChild(servicesSection);
+      }
+    }
+
+    this.refreshIcons();
+  }
+
+  private createEnrichmentSubsection(title: string, icon: string, fields: Array<{label: string, value: string}>): HTMLElement {
+    const section = DOMBuilder.createElement('div', {
+      className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
+    });
+
+    const header = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2 mb-3'
+    });
+    header.appendChild(DOMBuilder.createIcon(icon, 'w-4 h-4 text-blue-400'));
+    header.appendChild(DOMBuilder.createElement('h4', {
+      className: 'font-semibold text-white',
+      textContent: title
+    }));
+
+    const grid = DOMBuilder.createElement('div', {
+      className: 'space-y-2 text-sm'
+    });
+
+    fields.forEach(field => {
+      const row = DOMBuilder.createElement('div', {
+        className: 'flex flex-col sm:flex-row'
+      });
+
+      const label = DOMBuilder.createElement('span', {
+        className: 'text-gray-400 sm:w-1/3',
+        textContent: field.label + ':'
+      });
+
+      const value = DOMBuilder.createElement('span', {
+        className: 'text-white sm:w-2/3 break-all',
+        textContent: field.value
+      });
+
+      row.appendChild(label);
+      row.appendChild(value);
+      grid.appendChild(row);
+    });
+
+    section.appendChild(header);
+    section.appendChild(grid);
+
+    return section;
+  }
+
+  private createServicesSection(services: Array<{port: number, protocol: string, product: string | null, version: string | null, banner: string}>): HTMLElement {
+    const section = DOMBuilder.createElement('div', {
+      className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
+    });
+
+    const header = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2 mb-3'
+    });
+    header.appendChild(DOMBuilder.createIcon('terminal', 'w-4 h-4 text-blue-400'));
+    header.appendChild(DOMBuilder.createElement('h4', {
+      className: 'font-semibold text-white',
+      textContent: `Detected Services (${services.length})`
+    }));
+
+    const servicesList = DOMBuilder.createElement('div', {
+      className: 'space-y-3'
+    });
+
+    services.slice(0, 5).forEach(service => {
+      const serviceCard = DOMBuilder.createElement('div', {
+        className: 'bg-gray-800/50 rounded p-3 text-sm'
+      });
+
+      const portInfo = DOMBuilder.createElement('div', {
+        className: 'flex items-center space-x-2 mb-2'
+      });
+      portInfo.appendChild(DOMBuilder.createBadge(`Port ${service.port}`, 'blue'));
+      portInfo.appendChild(DOMBuilder.createElement('span', {
+        className: 'text-gray-400',
+        textContent: service.protocol.toUpperCase()
+      }));
+
+      serviceCard.appendChild(portInfo);
+
+      if (service.product) {
+        const productInfo = DOMBuilder.createElement('div', {
+          className: 'text-white',
+          textContent: `${service.product}${service.version ? ' ' + service.version : ''}`
+        });
+        serviceCard.appendChild(productInfo);
+      }
+
+      if (service.banner && service.banner.length > 0) {
+        const banner = DOMBuilder.createElement('div', {
+          className: 'mt-2 text-xs text-gray-400 font-mono bg-gray-900/50 p-2 rounded overflow-x-auto',
+          textContent: service.banner.slice(0, 150) + (service.banner.length > 150 ? '...' : '')
+        });
+        serviceCard.appendChild(banner);
+      }
+
+      servicesList.appendChild(serviceCard);
+    });
+
+    if (services.length > 5) {
+      const moreInfo = DOMBuilder.createElement('p', {
+        className: 'text-xs text-gray-400 mt-2',
+        textContent: `+ ${services.length - 5} more services`
+      });
+      servicesList.appendChild(moreInfo);
+    }
+
+    section.appendChild(header);
+    section.appendChild(servicesList);
+
+    return section;
+  }
+
+  private displayEnrichmentError(): void {
+    const contentContainer = document.getElementById('enrichment-content');
+    if (!contentContainer) return;
+
+    DOMBuilder.clearChildren(contentContainer);
+
+    const errorMessage = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2 text-red-400 text-sm'
+    });
+    errorMessage.appendChild(DOMBuilder.createIcon('alert-circle', 'w-4 h-4'));
+    errorMessage.appendChild(DOMBuilder.createElement('span', {
+      textContent: 'Failed to fetch enrichment data. This IOC type may not support enrichment.'
+    }));
+
+    contentContainer.appendChild(errorMessage);
+    this.refreshIcons();
   }
 
   private closeThreatDetailsModal(): void {
