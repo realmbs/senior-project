@@ -55,7 +55,7 @@ export class VisualAnalysisTriggerWidget extends Component<VisualAnalysisTrigger
 
   private createHeader(): HTMLElement {
     const header = DOMBuilder.createElement('div', {
-      className: 'p-6 flex items-center justify-between'
+      className: 'p-4 flex items-center justify-between'
     });
 
     // Title section
@@ -63,16 +63,19 @@ export class VisualAnalysisTriggerWidget extends Component<VisualAnalysisTrigger
       className: 'flex items-center gap-3'
     });
 
-    const icon = DOMBuilder.createIcon('bar-chart-2', 'w-6 h-6 text-purple-400');
-    titleSection.appendChild(icon);
+    const iconContainer = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-purple-500/20 rounded-lg'
+    });
+    iconContainer.appendChild(DOMBuilder.createIcon('bar-chart-2', 'w-5 h-5 text-purple-400'));
+    titleSection.appendChild(iconContainer);
 
     const titleText = DOMBuilder.createElement('div');
     const title = DOMBuilder.createElement('h2', {
-      className: 'text-lg font-semibold text-white',
+      className: 'font-medium',
       textContent: 'Threat Analytics & Trends'
     });
     const subtitle = DOMBuilder.createElement('p', {
-      className: 'text-sm text-gray-400 mt-1',
+      className: 'text-sm text-gray-400',
       textContent: 'Click to view time-series analysis and insights'
     });
     titleText.appendChild(title);

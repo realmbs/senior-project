@@ -73,7 +73,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
 
   private createHeader(): HTMLElement {
     const header = DOMBuilder.createElement('div', {
-      className: 'p-6 flex items-center justify-between'
+      className: 'p-4 flex items-center justify-between'
     });
 
     // Title section
@@ -81,17 +81,20 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       className: 'flex items-center gap-3'
     });
 
-    const icon = DOMBuilder.createIcon('map', 'w-6 h-6 text-blue-400');
-    titleSection.appendChild(icon);
+    const iconContainer = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-blue-500/20 rounded-lg'
+    });
+    iconContainer.appendChild(DOMBuilder.createIcon('map', 'w-5 h-5 text-blue-400'));
+    titleSection.appendChild(iconContainer);
 
     const titleText = DOMBuilder.createElement('div');
     const title = DOMBuilder.createElement('h2', {
-      className: 'text-lg font-semibold text-white',
+      className: 'font-medium',
       textContent: 'Threat Heatmap'
     });
     const subtitle = DOMBuilder.createElement('p', {
       id: 'heatmap-subtitle',
-      className: 'text-sm text-gray-400 mt-1',
+      className: 'text-sm text-gray-400',
       textContent: this.state.isLoading ? 'Loading...' : `${this.state.totalPoints} locations`
     });
     titleText.appendChild(title);
