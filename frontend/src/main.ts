@@ -760,6 +760,32 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     }));
   }
 
+  private setupClearSearchListener(): void {
+    const clearBtn = this.querySelector('#clear-search-btn');
+    if (clearBtn) {
+      // Remove any existing listener first
+      const newClearBtn = clearBtn.cloneNode(true) as HTMLElement;
+      clearBtn.parentNode?.replaceChild(newClearBtn, clearBtn);
+
+      this.addEventListener(newClearBtn, 'click', () => this.clearSearchResults());
+      this.refreshIcons();
+    }
+  }
+
+  private clearSearchResults(): void {
+    const resultsContainer = this.querySelector('#search-results');
+    const inputElement = this.querySelector('#ioc-input') as HTMLInputElement;
+
+    if (resultsContainer) {
+      DOMBuilder.clearChildren(resultsContainer);
+    }
+
+    if (inputElement) {
+      inputElement.value = '';
+      inputElement.focus();
+    }
+  }
+
   private displaySearchResults(results: ThreatIndicator[], container: HTMLElement): void {
     DOMBuilder.clearChildren(container);
 
@@ -775,12 +801,26 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       className: 'space-y-3'
     });
 
-    // Add header
+    // Add header with clear button
+    const headerContainer = DOMBuilder.createElement('div', {
+      className: 'flex items-center justify-between'
+    });
+
     const header = DOMBuilder.createElement('h4', {
       className: 'text-sm font-medium text-gray-300',
       textContent: `Search Results (${results.length})`
     });
-    resultsContainer.appendChild(header);
+
+    const clearButton = DOMBuilder.createElement('button', {
+      id: 'clear-search-btn',
+      className: 'text-xs text-gray-400 hover:text-red-400 transition-colors flex items-center space-x-1'
+    });
+    clearButton.appendChild(DOMBuilder.createIcon('x', 'w-3 h-3'));
+    clearButton.appendChild(DOMBuilder.createElement('span', { textContent: 'Clear' }));
+
+    headerContainer.appendChild(header);
+    headerContainer.appendChild(clearButton);
+    resultsContainer.appendChild(headerContainer);
 
     // Add results using DocumentFragment for efficiency
     const fragment = document.createDocumentFragment();
@@ -791,6 +831,10 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     resultsContainer.appendChild(fragment);
     container.appendChild(resultsContainer);
+
+    // Refresh icons and attach clear button event listener
+    this.refreshIcons();
+    this.setupClearSearchListener();
   }
 
   private createSearchResultItem(threat: ThreatIndicator): HTMLElement {
