@@ -33,6 +33,7 @@ interface DashboardState {
   recentThreats: ThreatIndicator[];
   isLoading: boolean;
   apiStatus: 'connecting' | 'connected' | 'error';
+  threatFilter: 'all' | 'high-risk' | 'recent';
 }
 
 class ThreatIntelligenceDashboard extends Component<DashboardState> {
@@ -56,7 +57,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       },
       recentThreats: [],
       isLoading: false,
-      apiStatus: 'connecting'
+      apiStatus: 'connecting',
+      threatFilter: 'all'
     });
 
     this.init();
@@ -250,11 +252,51 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       className: 'flex items-center justify-between'
     });
 
-    const title = DOMBuilder.createElement('h2', {
-      className: 'text-lg font-semibold flex items-center space-x-2'
+    // Title with filter button
+    const titleContainer = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2'
     });
-    title.appendChild(DOMBuilder.createIcon('list', 'w-5 h-5'));
-    title.appendChild(DOMBuilder.createElement('span', { textContent: 'Recent Threats' }));
+
+    const filterButton = DOMBuilder.createElement('button', {
+      id: 'threat-filter-btn',
+      className: 'p-1 hover:bg-gray-700/50 rounded transition-colors relative'
+    });
+    filterButton.appendChild(DOMBuilder.createIcon('filter', 'w-5 h-5'));
+
+    const title = DOMBuilder.createElement('h2', {
+      className: 'text-lg font-semibold flex items-center'
+    });
+    title.appendChild(DOMBuilder.createElement('span', {
+      id: 'threat-filter-label',
+      textContent: 'All Threats'
+    }));
+
+    titleContainer.appendChild(filterButton);
+    titleContainer.appendChild(title);
+
+    // Filter dropdown (hidden by default)
+    const filterDropdown = DOMBuilder.createElement('div', {
+      id: 'threat-filter-dropdown',
+      className: 'hidden absolute top-full left-0 mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[180px]'
+    });
+
+    const filterOptions = [
+      { value: 'all', label: 'All Threats', icon: 'list' },
+      { value: 'high-risk', label: 'High Risk', icon: 'alert-triangle' },
+      { value: 'recent', label: 'Recent Activity', icon: 'clock' }
+    ];
+
+    filterOptions.forEach(option => {
+      const optionBtn = DOMBuilder.createElement('button', {
+        className: 'threat-filter-option w-full px-4 py-2 text-left hover:bg-gray-700/50 transition-colors flex items-center space-x-2',
+        dataset: { filter: option.value }
+      });
+      optionBtn.appendChild(DOMBuilder.createIcon(option.icon, 'w-4 h-4'));
+      optionBtn.appendChild(DOMBuilder.createElement('span', { textContent: option.label }));
+      filterDropdown.appendChild(optionBtn);
+    });
+
+    filterButton.appendChild(filterDropdown);
 
     const count = DOMBuilder.createElement('span', {
       id: 'threats-count',
@@ -262,7 +304,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       textContent: '0 items'
     });
 
-    headerContent.appendChild(title);
+    headerContent.appendChild(titleContainer);
     headerContent.appendChild(count);
     header.appendChild(headerContent);
 
@@ -451,7 +493,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const threatsContainer = this.querySelector('#threats-list');
     if (threatsContainer) {
       console.log('✅ Creating threat list component');
-      this.threatList = new ThreatList(threatsContainer, (ioc) => this.handleThreatClick(ioc));
+      this.threatList = new ThreatList(threatsContainer, (ioc) => this.handleThreatClick(ioc), 200);
     } else {
       console.error('❌ Threats container not found: #threats-list');
     }
@@ -476,6 +518,34 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const refreshBtn = this.querySelector('#refresh-btn');
     if (refreshBtn) {
       this.addEventListener(refreshBtn, 'click', () => this.loadDashboardData());
+    }
+
+    // Filter button and dropdown
+    const filterBtn = this.querySelector('#threat-filter-btn');
+    const filterDropdown = this.querySelector('#threat-filter-dropdown');
+
+    if (filterBtn && filterDropdown) {
+      this.addEventListener(filterBtn, 'click', (e) => {
+        e.stopPropagation();
+        filterDropdown.classList.toggle('hidden');
+        this.refreshIcons();
+      });
+
+      // Filter options
+      const filterOptions = this.querySelectorAll('.threat-filter-option');
+      filterOptions.forEach(option => {
+        this.addEventListener(option, 'click', (e) => {
+          e.stopPropagation();
+          const filterValue = (e.currentTarget as HTMLElement).dataset.filter as 'all' | 'high-risk' | 'recent';
+          this.setThreatFilter(filterValue);
+          filterDropdown.classList.add('hidden');
+        });
+      });
+
+      // Close dropdown when clicking outside
+      this.addEventListener(document, 'click', () => {
+        filterDropdown.classList.add('hidden');
+      });
     }
 
     // Search functionality
@@ -555,9 +625,9 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       highRiskThreats: threats.filter(t => t.confidence >= 80).length,
       recentActivity: threats.filter(t => {
         const created = new Date(t.created_at);
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        return created > yesterday;
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        return created > sevenDaysAgo;
       }).length,
       topSources: [...new Set(threats.map(t => t.source))].slice(0, 3)
     };
@@ -574,17 +644,59 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   }
 
   private updateThreatsDisplay(): void {
-    const { recentThreats } = this.state;
+    const { recentThreats, threatFilter } = this.state;
+
+    // Apply filter
+    const filteredThreats = this.filterThreats(recentThreats, threatFilter);
+
     const countElement = this.querySelector('#threats-count');
 
     if (countElement) {
-      countElement.textContent = `${recentThreats.length} items`;
+      countElement.textContent = `${filteredThreats.length} items`;
     }
 
     // Update threat list component
     if (this.threatList) {
-      this.threatList.updateThreats(recentThreats);
+      this.threatList.updateThreats(filteredThreats);
     }
+  }
+
+  private filterThreats(threats: ThreatIndicator[], filter: 'all' | 'high-risk' | 'recent'): ThreatIndicator[] {
+    switch (filter) {
+      case 'high-risk':
+        return threats.filter(t => t.confidence >= 80);
+
+      case 'recent':
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        return threats.filter(t => {
+          const created = new Date(t.created_at);
+          return created > sevenDaysAgo;
+        });
+
+      case 'all':
+      default:
+        return threats;
+    }
+  }
+
+  private setThreatFilter(filter: 'all' | 'high-risk' | 'recent'): void {
+    this.setState({ threatFilter: filter });
+
+    // Update label
+    const labelElement = this.querySelector('#threat-filter-label');
+    const filterLabels = {
+      'all': 'All Threats',
+      'high-risk': 'High Risk',
+      'recent': 'Recent Activity'
+    };
+
+    if (labelElement) {
+      labelElement.textContent = filterLabels[filter];
+    }
+
+    // Re-render threats with new filter
+    this.updateThreatsDisplay();
   }
 
   private async handleSearch(): Promise<void> {
