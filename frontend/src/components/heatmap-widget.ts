@@ -90,8 +90,9 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       textContent: 'Geographic Threat Distribution'
     });
     const subtitle = DOMBuilder.createElement('p', {
+      id: 'heatmap-subtitle',
       className: 'text-sm text-gray-400 mt-1',
-      textContent: 'Click to view interactive heatmap'
+      textContent: `${this.state.totalPoints} locations`
     });
     titleText.appendChild(title);
     titleText.appendChild(subtitle);
@@ -99,9 +100,9 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
 
     header.appendChild(titleSection);
 
-    // Stats section
-    const statsSection = this.createStatsSection();
-    header.appendChild(statsSection);
+    // Right section - expand icon
+    const expandIcon = DOMBuilder.createIcon('chevron-right', 'w-5 h-5 text-gray-400');
+    header.appendChild(expandIcon);
 
     return header;
   }
@@ -454,6 +455,12 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
 
   private updateStats(totalPoints: number, enrichedCount: number): void {
     this.setState({ totalPoints, enrichedCount });
+
+    // Update subtitle in header
+    const subtitle = this.querySelector('#heatmap-subtitle');
+    if (subtitle) {
+      subtitle.textContent = `${totalPoints} locations`;
+    }
 
     // Update collapsed view stats
     const pointsText = this.querySelector('#heatmap-points-count');

@@ -6,6 +6,8 @@ import { ThreatList } from './components/threat-list.js';
 import type { ThreatIndicator } from './components/threat-card.js';
 import { enrichIndicator, detectIocType, type EnrichmentResponse } from './lib/api.js';
 import { HeatmapWidget } from './components/heatmap-widget.js';
+import { VisualAnalysisTriggerWidget } from './components/visual-analysis-trigger-widget.js';
+import { VisualAnalysisModal } from './components/visual-analysis-modal.js';
 
 // API Configuration
 const API_CONFIG = {
@@ -44,6 +46,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   private metricsWidgets: Map<string, MetricsWidget> = new Map();
   private threatList: ThreatList | null = null;
   private heatmapWidget: HeatmapWidget | null = null;
+  private analyticsTriggerWidget: VisualAnalysisTriggerWidget | null = null;
+  private analyticsModal: VisualAnalysisModal | null = null;
 
   // Auto-refresh interval
   private refreshInterval: number | null = null;
@@ -207,12 +211,24 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   }
 
   private createHeatmapSection(): HTMLElement {
-    const section = DOMBuilder.createElement('div', {
-      id: 'heatmap-section',
-      className: 'mb-8'
+    // Two-column grid container for heatmap and analytics trigger
+    const gridContainer = DOMBuilder.createElement('div', {
+      className: 'grid grid-cols-1 md:grid-cols-2 gap-6 mb-8'
     });
 
-    return section;
+    // Heatmap widget container (left)
+    const heatmapSection = DOMBuilder.createElement('div', {
+      id: 'heatmap-section'
+    });
+    gridContainer.appendChild(heatmapSection);
+
+    // Analytics trigger widget container (right)
+    const analyticsSection = DOMBuilder.createElement('div', {
+      id: 'analytics-trigger-section'
+    });
+    gridContainer.appendChild(analyticsSection);
+
+    return gridContainer;
   }
 
   private createMetricsGrid(): HTMLElement {
@@ -612,6 +628,32 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       console.error('❌ Heatmap container not found: #heatmap-section');
     }
 
+    // Initialize analytics modal (doesn't need a container, it creates its own overlay)
+    try {
+      console.log('✅ Creating analytics modal');
+      const modalContainer = DOMBuilder.createElement('div');
+      this.analyticsModal = new VisualAnalysisModal(modalContainer);
+    } catch (error) {
+      console.error('❌ Failed to create analytics modal:', error);
+    }
+
+    // Initialize analytics trigger widget
+    const analyticsContainer = this.querySelector('#analytics-trigger-section');
+    if (analyticsContainer) {
+      try {
+        console.log('✅ Creating analytics trigger widget');
+        this.analyticsTriggerWidget = new VisualAnalysisTriggerWidget(
+          analyticsContainer,
+          () => this.openAnalyticsModal()
+        );
+      } catch (error) {
+        console.error('❌ Failed to create analytics trigger widget:', error);
+        analyticsContainer.style.display = 'none';
+      }
+    } else {
+      console.error('❌ Analytics trigger container not found: #analytics-trigger-section');
+    }
+
     // Initialize threat list
     const threatsContainer = this.querySelector('#threats-list');
     if (threatsContainer) {
@@ -629,6 +671,15 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     if (input) {
       input.value = ioc;
       this.handleSearch();
+    }
+  }
+
+  private openAnalyticsModal(): void {
+    if (this.analyticsModal) {
+      console.log('📊 Opening analytics modal with', this.state.recentThreats.length, 'threats');
+      this.analyticsModal.openModal(this.state.recentThreats);
+    } else {
+      console.error('❌ Analytics modal not initialized');
     }
   }
 
@@ -797,6 +848,11 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     // Update heatmap with latest threats
     if (this.heatmapWidget) {
       this.heatmapWidget.update(recentThreats);
+    }
+
+    // Update analytics modal if it's open
+    if (this.analyticsModal) {
+      this.analyticsModal.update(recentThreats);
     }
   }
 
