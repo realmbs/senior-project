@@ -35,6 +35,7 @@ interface DashboardState {
   isLoading: boolean;
   apiStatus: 'connecting' | 'connected' | 'error';
   threatFilter: 'all' | 'high-risk' | 'recent';
+  activeTab: 'ioc-lookup' | 'enrich';
 }
 
 class ThreatIntelligenceDashboard extends Component<DashboardState> {
@@ -59,7 +60,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       recentThreats: [],
       isLoading: false,
       apiStatus: 'connecting',
-      threatFilter: 'all'
+      threatFilter: 'all',
+      activeTab: 'ioc-lookup'
     });
 
     this.init();
@@ -345,22 +347,61 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50'
     });
 
-    // Header
+    // Tab Navigation Header
     const header = DOMBuilder.createElement('div', {
       className: 'p-6 border-b border-gray-700/50'
     });
 
-    const title = DOMBuilder.createElement('h2', {
-      className: 'text-lg font-semibold flex items-center space-x-2'
+    const tabNav = DOMBuilder.createElement('div', {
+      className: 'flex space-x-1 bg-gray-700/30 rounded-lg p-1'
     });
-    title.appendChild(DOMBuilder.createIcon('search', 'w-5 h-5'));
-    title.appendChild(DOMBuilder.createElement('span', { textContent: 'IOC Lookup' }));
 
-    header.appendChild(title);
+    // IOC Lookup Tab
+    const iocTab = DOMBuilder.createElement('button', {
+      id: 'tab-ioc-lookup',
+      className: 'flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors bg-blue-600 text-white',
+      dataset: { tab: 'ioc-lookup' }
+    });
+    iocTab.appendChild(DOMBuilder.createIcon('search', 'w-4 h-4'));
+    iocTab.appendChild(DOMBuilder.createElement('span', { textContent: 'IOC Lookup' }));
 
-    // Content
-    const content = DOMBuilder.createElement('div', {
+    // Enrich Tab
+    const enrichTab = DOMBuilder.createElement('button', {
+      id: 'tab-enrich',
+      className: 'flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition-colors text-gray-400 hover:text-white hover:bg-gray-700/50',
+      dataset: { tab: 'enrich' }
+    });
+    enrichTab.appendChild(DOMBuilder.createIcon('globe', 'w-4 h-4'));
+    enrichTab.appendChild(DOMBuilder.createElement('span', { textContent: 'Enrich IOC' }));
+
+    tabNav.appendChild(iocTab);
+    tabNav.appendChild(enrichTab);
+    header.appendChild(tabNav);
+
+    // Content Container
+    const contentContainer = DOMBuilder.createElement('div', {
+      id: 'tab-content-container',
       className: 'p-6'
+    });
+
+    // IOC Lookup Tab Content
+    const iocLookupContent = this.createIOCLookupTabContent();
+    contentContainer.appendChild(iocLookupContent);
+
+    // Enrich Tab Content (hidden initially)
+    const enrichContent = this.createEnrichTabContent();
+    contentContainer.appendChild(enrichContent);
+
+    section.appendChild(header);
+    section.appendChild(contentContainer);
+
+    return section;
+  }
+
+  private createIOCLookupTabContent(): HTMLElement {
+    const content = DOMBuilder.createElement('div', {
+      id: 'ioc-lookup-tab-content',
+      className: 'space-y-4'
     });
 
     const form = DOMBuilder.createElement('div', {
@@ -396,10 +437,49 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     content.appendChild(form);
     content.appendChild(results);
 
-    section.appendChild(header);
-    section.appendChild(content);
+    return content;
+  }
 
-    return section;
+  private createEnrichTabContent(): HTMLElement {
+    const content = DOMBuilder.createElement('div', {
+      id: 'enrich-tab-content',
+      className: 'space-y-4 hidden'
+    });
+
+    const form = DOMBuilder.createElement('div', {
+      className: 'space-y-4'
+    });
+
+    const inputContainer = DOMBuilder.createElement('div');
+    const input = DOMBuilder.createElement('input', {
+      id: 'enrich-input',
+      attributes: {
+        type: 'text',
+        placeholder: 'Enter IP or domain to enrich...'
+      },
+      className: 'w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500'
+    });
+    inputContainer.appendChild(input);
+
+    const button = DOMBuilder.createElement('button', {
+      id: 'enrich-btn',
+      className: 'w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2'
+    });
+    button.appendChild(DOMBuilder.createIcon('globe', 'w-4 h-4'));
+    button.appendChild(DOMBuilder.createElement('span', { textContent: 'Enrich IOC' }));
+
+    form.appendChild(inputContainer);
+    form.appendChild(button);
+
+    const results = DOMBuilder.createElement('div', {
+      id: 'enrich-results',
+      className: 'mt-6 space-y-4'
+    });
+
+    content.appendChild(form);
+    content.appendChild(results);
+
+    return content;
   }
 
   private createQuickActionsSection(): HTMLElement {
@@ -582,6 +662,34 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     if (collectBtn) {
       this.addEventListener(collectBtn, 'click', () => this.triggerCollection());
     }
+
+    // Tab switching
+    const iocTab = this.querySelector('#tab-ioc-lookup');
+    const enrichTab = this.querySelector('#tab-enrich');
+
+    if (iocTab) {
+      this.addEventListener(iocTab, 'click', () => this.switchTab('ioc-lookup'));
+    }
+
+    if (enrichTab) {
+      this.addEventListener(enrichTab, 'click', () => this.switchTab('enrich'));
+    }
+
+    // Enrich functionality
+    const enrichBtn = this.querySelector('#enrich-btn');
+    const enrichInput = this.querySelector('#enrich-input') as HTMLInputElement;
+
+    if (enrichBtn) {
+      this.addEventListener(enrichBtn, 'click', () => this.handleEnrich());
+    }
+
+    if (enrichInput) {
+      this.addEventListener(enrichInput, 'keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.handleEnrich();
+        }
+      });
+    }
   }
 
   private async loadDashboardData(): Promise<void> {
@@ -710,6 +818,273 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     // Re-render threats with new filter
     this.updateThreatsDisplay();
+  }
+
+  private switchTab(tabName: 'ioc-lookup' | 'enrich'): void {
+    this.setState({ activeTab: tabName });
+
+    // Update tab button styles
+    const iocTab = this.querySelector('#tab-ioc-lookup');
+    const enrichTab = this.querySelector('#tab-enrich');
+    const iocContent = this.querySelector('#ioc-lookup-tab-content');
+    const enrichContent = this.querySelector('#enrich-tab-content');
+
+    if (tabName === 'ioc-lookup') {
+      // Activate IOC Lookup tab
+      iocTab?.classList.add('bg-blue-600', 'text-white');
+      iocTab?.classList.remove('text-gray-400', 'hover:text-white', 'hover:bg-gray-700/50');
+
+      enrichTab?.classList.remove('bg-blue-600', 'text-white');
+      enrichTab?.classList.add('text-gray-400', 'hover:text-white', 'hover:bg-gray-700/50');
+
+      iocContent?.classList.remove('hidden');
+      enrichContent?.classList.add('hidden');
+    } else {
+      // Activate Enrich tab
+      enrichTab?.classList.add('bg-blue-600', 'text-white');
+      enrichTab?.classList.remove('text-gray-400', 'hover:text-white', 'hover:bg-gray-700/50');
+
+      iocTab?.classList.remove('bg-blue-600', 'text-white');
+      iocTab?.classList.add('text-gray-400', 'hover:text-white', 'hover:bg-gray-700/50');
+
+      enrichContent?.classList.remove('hidden');
+      iocContent?.classList.add('hidden');
+    }
+
+    this.refreshIcons();
+  }
+
+  private async handleEnrich(): Promise<void> {
+    const input = this.querySelector('#enrich-input') as HTMLInputElement;
+    const resultsContainer = this.querySelector('#enrich-results');
+    const enrichBtn = this.querySelector('#enrich-btn');
+
+    if (!input || !resultsContainer || !enrichBtn) return;
+
+    const query = input.value.trim();
+    if (!query) {
+      this.showNotification('Please enter an IOC to enrich', 'warning');
+      return;
+    }
+
+    // Show loading state
+    this.setEnrichButtonLoading(enrichBtn, true);
+
+    try {
+      const iocType = detectIocType(query);
+      console.log(`🔍 Enriching ${iocType}: ${query}`);
+
+      const enrichmentData = await enrichIndicator(query, iocType);
+      console.log('✅ Enrichment data received:', enrichmentData);
+
+      this.displayEnrichResults(enrichmentData, resultsContainer);
+    } catch (error) {
+      console.error('❌ Enrichment failed:', error);
+      this.showNotification('Enrichment failed', 'error');
+      this.displayEnrichError(resultsContainer);
+    } finally {
+      this.setEnrichButtonLoading(enrichBtn, false);
+    }
+  }
+
+  private setEnrichButtonLoading(button: HTMLElement, loading: boolean): void {
+    DOMBuilder.clearChildren(button);
+
+    if (loading) {
+      button.appendChild(DOMBuilder.createElement('div', {
+        className: 'animate-spin rounded-full h-4 w-4 border-b-2 border-white'
+      }));
+      button.appendChild(DOMBuilder.createElement('span', {
+        textContent: 'Enriching...'
+      }));
+    } else {
+      button.appendChild(DOMBuilder.createIcon('globe', 'w-4 h-4'));
+      button.appendChild(DOMBuilder.createElement('span', {
+        textContent: 'Enrich IOC'
+      }));
+      this.refreshIcons();
+    }
+  }
+
+  private displayEnrichResults(data: EnrichmentResponse, container: HTMLElement): void {
+    DOMBuilder.clearChildren(container);
+
+    if (!data.enriched_indicators || data.enriched_indicators.length === 0) {
+      container.appendChild(DOMBuilder.createElement('p', {
+        className: 'text-gray-400',
+        textContent: 'No enrichment data available for this IOC.'
+      }));
+      return;
+    }
+
+    const enriched = data.enriched_indicators[0];
+
+    const resultsContainer = DOMBuilder.createElement('div', {
+      className: 'space-y-4'
+    });
+
+    // Header with clear button
+    const headerContainer = DOMBuilder.createElement('div', {
+      className: 'flex items-center justify-between'
+    });
+
+    const header = DOMBuilder.createElement('h4', {
+      className: 'text-sm font-medium text-gray-300',
+      textContent: 'Enrichment Results'
+    });
+
+    const clearButton = DOMBuilder.createElement('button', {
+      id: 'clear-enrich-btn',
+      className: 'text-xs text-gray-400 hover:text-red-400 transition-colors flex items-center space-x-1'
+    });
+    clearButton.appendChild(DOMBuilder.createIcon('x', 'w-3 h-3'));
+    clearButton.appendChild(DOMBuilder.createElement('span', { textContent: 'Clear' }));
+
+    headerContainer.appendChild(header);
+    headerContainer.appendChild(clearButton);
+    resultsContainer.appendChild(headerContainer);
+
+    // IOC Info Card
+    const iocCard = DOMBuilder.createElement('div', {
+      className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
+    });
+
+    const iocHeader = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2 mb-3'
+    });
+    iocHeader.appendChild(DOMBuilder.createIcon('info', 'w-4 h-4 text-blue-400'));
+    iocHeader.appendChild(DOMBuilder.createElement('h5', {
+      className: 'font-semibold text-white',
+      textContent: 'IOC Information'
+    }));
+    iocCard.appendChild(iocHeader);
+
+    const iocValue = DOMBuilder.createElement('p', {
+      className: 'text-white font-mono text-sm break-all mb-2',
+      textContent: enriched.ioc_value
+    });
+    iocCard.appendChild(iocValue);
+
+    const iocTypeBadge = DOMBuilder.createBadge(enriched.ioc_type.toUpperCase(), 'blue');
+    iocCard.appendChild(iocTypeBadge);
+
+    resultsContainer.appendChild(iocCard);
+
+    // Geolocation Data
+    if (enriched.geolocation) {
+      const geoCard = this.createEnrichResultCard('Geolocation', 'map-pin', [
+        { label: 'Country', value: `${enriched.geolocation.country} (${enriched.geolocation.country_code})` },
+        { label: 'City', value: `${enriched.geolocation.city}, ${enriched.geolocation.region}` },
+        { label: 'Coordinates', value: `${enriched.geolocation.latitude}, ${enriched.geolocation.longitude}` },
+        { label: 'ISP', value: enriched.geolocation.isp },
+        { label: 'Organization', value: enriched.geolocation.org }
+      ]);
+      resultsContainer.appendChild(geoCard);
+    }
+
+    // Shodan Data
+    if (enriched.shodan) {
+      const shodanFields: Array<{label: string, value: string}> = [
+        { label: 'IP Address', value: enriched.shodan.ip },
+        { label: 'Location', value: `${enriched.shodan.city}, ${enriched.shodan.country_name}` },
+        { label: 'Organization', value: enriched.shodan.org }
+      ];
+
+      if (enriched.shodan.ports && enriched.shodan.ports.length > 0) {
+        shodanFields.push({ label: 'Open Ports', value: enriched.shodan.ports.join(', ') });
+      }
+
+      if (enriched.shodan.vulns && enriched.shodan.vulns.length > 0) {
+        shodanFields.push({ label: 'Vulnerabilities', value: enriched.shodan.vulns.join(', ') });
+      }
+
+      const shodanCard = this.createEnrichResultCard('Shodan Intelligence', 'server', shodanFields);
+      resultsContainer.appendChild(shodanCard);
+    }
+
+    container.appendChild(resultsContainer);
+    this.refreshIcons();
+
+    // Setup clear button listener
+    this.setupClearEnrichListener();
+  }
+
+  private createEnrichResultCard(title: string, icon: string, fields: Array<{label: string, value: string}>): HTMLElement {
+    const card = DOMBuilder.createElement('div', {
+      className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
+    });
+
+    const header = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2 mb-3'
+    });
+    header.appendChild(DOMBuilder.createIcon(icon, 'w-4 h-4 text-blue-400'));
+    header.appendChild(DOMBuilder.createElement('h5', {
+      className: 'font-semibold text-white',
+      textContent: title
+    }));
+
+    const grid = DOMBuilder.createElement('div', {
+      className: 'space-y-2 text-sm'
+    });
+
+    fields.forEach(field => {
+      const row = DOMBuilder.createElement('div', {
+        className: 'flex flex-col sm:flex-row'
+      });
+
+      const label = DOMBuilder.createElement('span', {
+        className: 'text-gray-400 sm:w-1/3',
+        textContent: field.label + ':'
+      });
+
+      const value = DOMBuilder.createElement('span', {
+        className: 'text-white sm:w-2/3 break-all',
+        textContent: field.value
+      });
+
+      row.appendChild(label);
+      row.appendChild(value);
+      grid.appendChild(row);
+    });
+
+    card.appendChild(header);
+    card.appendChild(grid);
+
+    return card;
+  }
+
+  private setupClearEnrichListener(): void {
+    const clearBtn = this.querySelector('#clear-enrich-btn');
+    if (clearBtn) {
+      // Remove any existing listener first
+      const newClearBtn = clearBtn.cloneNode(true) as HTMLElement;
+      clearBtn.parentNode?.replaceChild(newClearBtn, clearBtn);
+
+      this.addEventListener(newClearBtn, 'click', () => this.clearEnrichResults());
+      this.refreshIcons();
+    }
+  }
+
+  private clearEnrichResults(): void {
+    const resultsContainer = this.querySelector('#enrich-results');
+    const inputElement = this.querySelector('#enrich-input') as HTMLInputElement;
+
+    if (resultsContainer) {
+      DOMBuilder.clearChildren(resultsContainer);
+    }
+
+    if (inputElement) {
+      inputElement.value = '';
+      inputElement.focus();
+    }
+  }
+
+  private displayEnrichError(container: HTMLElement): void {
+    DOMBuilder.clearChildren(container);
+    container.appendChild(DOMBuilder.createElement('p', {
+      className: 'text-gray-400',
+      textContent: 'Enrichment failed. Please try again.'
+    }));
   }
 
   private async handleSearch(): Promise<void> {
