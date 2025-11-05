@@ -7,11 +7,6 @@ import { Component } from '../lib/component.js';
 import { DOMBuilder } from '../lib/dom-builder.js';
 import type { ThreatIndicator } from './threat-card.js';
 
-// Import chart widgets (will be created next)
-import type { TimelineChartWidget } from './timeline-chart-widget.js';
-import type { SourceComparisonWidget } from './source-comparison-widget.js';
-import type { CollectionActivityWidget } from './collection-activity-widget.js';
-
 interface VisualAnalysisModalState {
   isOpen: boolean;
   threats: ThreatIndicator[];

@@ -23,7 +23,6 @@ interface HeatmapWidgetState {
 export class HeatmapWidget extends Component<HeatmapWidgetState> {
   private map: any = null;
   private heatLayer: any = null;
-  private mapContainer: HTMLElement | null = null;
   private modalOverlay: HTMLElement | null = null;
 
   constructor(element: HTMLElement) {
@@ -108,53 +107,6 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     header.appendChild(expandIcon);
 
     return header;
-  }
-
-  private createStatsSection(): HTMLElement {
-    const stats = DOMBuilder.createElement('div', {
-      className: 'flex items-center gap-4'
-    });
-
-    // Loading indicator
-    const loadingIndicator = DOMBuilder.createElement('div', {
-      id: 'heatmap-loading',
-      className: 'flex items-center gap-2 text-sm text-gray-400',
-      style: { display: this.state.isLoading ? 'flex' : 'none' }
-    });
-
-    const spinner = DOMBuilder.createElement('div', {
-      className: 'animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent'
-    });
-    loadingIndicator.appendChild(spinner);
-    loadingIndicator.appendChild(DOMBuilder.createText('Loading...'));
-    stats.appendChild(loadingIndicator);
-
-    // Stats display
-    const statsDisplay = DOMBuilder.createElement('div', {
-      id: 'heatmap-stats',
-      className: 'flex items-center gap-4 text-sm'
-    });
-
-    const pointsCount = DOMBuilder.createElement('div', {
-      className: 'flex items-center gap-2'
-    });
-    const pointsIcon = DOMBuilder.createIcon('map-pin', 'w-4 h-4 text-blue-400');
-    const pointsText = DOMBuilder.createElement('span', {
-      id: 'heatmap-points-count',
-      className: 'text-gray-300',
-      textContent: `${this.state.totalPoints} locations`
-    });
-    pointsCount.appendChild(pointsIcon);
-    pointsCount.appendChild(pointsText);
-    statsDisplay.appendChild(pointsCount);
-
-    stats.appendChild(statsDisplay);
-
-    // Legend
-    const legend = this.createLegend();
-    stats.appendChild(legend);
-
-    return stats;
   }
 
   private createLegend(): HTMLElement {

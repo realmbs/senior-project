@@ -47,7 +47,6 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   private metricsWidgets: Map<string, MetricsWidget> = new Map();
   private threatList: ThreatList | null = null;
   private heatmapWidget: HeatmapWidget | null = null;
-  private analyticsTriggerWidget: VisualAnalysisTriggerWidget | null = null;
   private analyticsModal: VisualAnalysisModal | null = null;
 
   // Auto-refresh interval
@@ -643,7 +642,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     if (analyticsContainer) {
       try {
         console.log('✅ Creating analytics trigger widget');
-        this.analyticsTriggerWidget = new VisualAnalysisTriggerWidget(
+        new VisualAnalysisTriggerWidget(
           analyticsContainer,
           () => this.openAnalyticsModal()
         );
@@ -2099,7 +2098,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     };
 
     sources.forEach(source => {
-      const info = sourceInfo[source] || {
+      const info = (sourceInfo as Record<string, typeof sourceInfo.otx>)[source] || {
         name: source.toUpperCase(),
         description: 'Threat intelligence feed',
         url: '#',
