@@ -77,8 +77,8 @@ class ThreatIntelligenceDashboard {
                   <i data-lucide="shield-check" class="w-6 h-6"></i>
                 </div>
                 <div>
-                  <h1 class="text-xl font-bold">Threat Intelligence Platform</h1>
-                  <p class="text-sm text-gray-400">Real-time OSINT Analysis</p>
+                  <h1 class="text-xl font-bold">Threat Intelligence v1.0</h1>
+                  <p class="text-sm text-gray-400">Real-time TI Feed Analysis</p>
                 </div>
               </div>
               <div class="flex items-center space-x-4">

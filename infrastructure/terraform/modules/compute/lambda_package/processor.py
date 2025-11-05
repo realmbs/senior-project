@@ -44,6 +44,16 @@ MAX_BATCH_SIZE = int(os.environ.get('MAX_BATCH_SIZE', '50'))  # Reduced for MVP
 threat_intel_table = dynamodb.Table(THREAT_INTEL_TABLE)
 dedup_table = dynamodb.Table(DEDUP_TABLE)
 
+# CORS Headers Helper Function
+def get_cors_headers():
+    """Returns standard CORS headers for API Gateway Lambda proxy integration"""
+    return {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        'Content-Type': 'application/json'
+    }
+
 # Basic STIX 2.1 Pattern Validation
 STIX_PATTERNS = {
     'ipv4': r'\[ipv4-addr:value\s*=\s*\'([0-9]{1,3}\.){3}[0-9]{1,3}\'\]',
@@ -319,48 +329,6 @@ def export_indicators(request: Dict[str, Any]) -> Dict[str, Any]:
         return {'error': str(e)}
 
 
-def parse_api_gateway_event(event: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Parse API Gateway event and handle base64 encoding
-
-    Args:
-        event: Lambda event from API Gateway or direct invocation
-
-    Returns:
-        Parsed request body as dictionary
-    """
-    # Direct Lambda invocation (no API Gateway)
-    if 'httpMethod' not in event and 'body' not in event:
-        return event
-
-    # API Gateway request
-    if 'body' in event and event['body']:
-        body = event['body']
-
-        # Handle base64 encoded body from API Gateway
-        if event.get('isBase64Encoded', False):
-            import base64
-            try:
-                body = base64.b64decode(body).decode('utf-8')
-                logger.info("Decoded base64 encoded request body")
-            except Exception as e:
-                logger.error(f"Failed to decode base64 body: {str(e)}")
-                raise ValueError("Invalid base64 encoded request body")
-
-        # Parse JSON body
-        if isinstance(body, str):
-            try:
-                return json.loads(body)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON body: {str(e)} - Body: {body[:200]}")
-                raise ValueError("Invalid JSON in request body")
-        else:
-            return body
-    else:
-        # No body provided
-        return {}
-
-
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
     Main Lambda handler for threat intelligence processing
@@ -397,8 +365,9 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
                 body['query'] = {k: v for k, v in body['query'].items() if v is not None}
             else:
                 # POST request with body
-                body = parse_api_gateway_event(event)
-                if not body:
+                if event.get('body'):
+                    body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+                else:
                     body = {'action': 'process'}
         else:
             # Direct Lambda invocation
@@ -411,6 +380,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             results = search_indicators(body.get('query', {}))
             return {
                 'statusCode': 200,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'action': 'search',
                     'results': results,
@@ -422,6 +392,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             results = export_indicators(body.get('export_request', {}))
             return {
                 'statusCode': 200,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'action': 'export',
                     'results': results,
@@ -435,6 +406,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             if not indicators:
                 return {
                     'statusCode': 400,
+                    'headers': get_cors_headers(),
                     'body': json.dumps({'error': 'No indicators provided for processing'})
                 }
 
@@ -455,6 +427,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 
             return {
                 'statusCode': 200,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'action': 'process',
                     'indicators_processed': processed_count,
@@ -467,6 +440,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         else:
             return {
                 'statusCode': 400,
+                'headers': get_cors_headers(),
                 'body': json.dumps({'error': f'Unknown action: {action}'})
             }
 
@@ -474,6 +448,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         logger.error(f"Processing failed: {str(e)}")
         return {
             'statusCode': 500,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'error': 'Processing failed',
                 'message': str(e),

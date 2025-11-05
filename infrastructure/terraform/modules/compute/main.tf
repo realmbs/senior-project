@@ -35,14 +35,14 @@
 # Collects threat intelligence from OSINT sources (OTX, Abuse.ch)
 # Optimized for cost with 256MB memory and 5-minute timeout
 resource "aws_lambda_function" "threat_collector" {
-  filename         = "${path.module}/lambda_deployment.zip"
+  filename         = "${path.module}/lambda_deployment_fixed.zip"
   function_name    = "${var.project_name}-threat-collector-${var.environment}"
   role            = var.lambda_execution_role_arn
   handler         = "collector.lambda_handler"
   runtime         = "python3.11"
   timeout         = var.lambda_timeout
   memory_size     = var.collector_memory_size
-  source_code_hash = filebase64sha256("${path.module}/lambda_deployment.zip")
+  source_code_hash = filebase64sha256("${path.module}/lambda_deployment_fixed.zip")
 
   # Environment variables for threat intelligence collection
   environment {
@@ -83,14 +83,14 @@ resource "aws_lambda_function" "threat_collector" {
 # Processes collected threat intelligence data and performs STIX 2.1 compliance
 # Higher memory allocation (512MB) for intensive data processing operations
 resource "aws_lambda_function" "data_processor" {
-  filename         = "${path.module}/lambda_deployment.zip"
+  filename         = "${path.module}/lambda_deployment_fixed.zip"
   function_name    = "${var.project_name}-data-processor-${var.environment}"
   role            = var.lambda_execution_role_arn
   handler         = "processor.lambda_handler"
   runtime         = "python3.11"
   timeout         = var.lambda_timeout
   memory_size     = var.processor_memory_size
-  source_code_hash = filebase64sha256("${path.module}/lambda_deployment.zip")
+  source_code_hash = filebase64sha256("${path.module}/lambda_deployment_fixed.zip")
 
   # Environment variables for data processing
   environment {
@@ -127,14 +127,14 @@ resource "aws_lambda_function" "data_processor" {
 # Performs basic OSINT enrichment using Shodan API, IP geolocation, and DNS analysis
 # Higher memory allocation (1024MB) for network requests and data processing
 resource "aws_lambda_function" "osint_enrichment" {
-  filename         = "${path.module}/lambda_deployment.zip"
+  filename         = "${path.module}/lambda_deployment_fixed.zip"
   function_name    = "${var.project_name}-osint-enrichment-${var.environment}"
   role            = var.lambda_execution_role_arn
   handler         = "enrichment.lambda_handler"
   runtime         = "python3.11"
   timeout         = var.lambda_timeout
   memory_size     = var.enrichment_memory_size
-  source_code_hash = filebase64sha256("${path.module}/lambda_deployment.zip")
+  source_code_hash = filebase64sha256("${path.module}/lambda_deployment_fixed.zip")
 
   # Environment variables for OSINT enrichment
   environment {

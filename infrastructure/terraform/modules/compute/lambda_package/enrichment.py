@@ -20,6 +20,7 @@ import logging
 import os
 import socket
 import time
+import base64
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from decimal import Decimal
@@ -45,6 +46,16 @@ enrichment_cache_table = dynamodb.Table(ENRICHMENT_CACHE_TABLE)
 
 # Rate limiting
 request_timestamps = []
+
+# CORS Headers Helper Function
+def get_cors_headers():
+    """Returns standard CORS headers for API Gateway Lambda proxy integration"""
+    return {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        'Content-Type': 'application/json'
+    }
 
 
 def get_api_keys() -> Dict[str, str]:
@@ -285,48 +296,6 @@ def calculate_risk_score(enrichment_data: Dict[str, Any]) -> int:
     return min(risk_score, 100)  # Cap at 100
 
 
-def parse_api_gateway_event(event: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Parse API Gateway event and handle base64 encoding
-
-    Args:
-        event: Lambda event from API Gateway or direct invocation
-
-    Returns:
-        Parsed request body as dictionary
-    """
-    # Direct Lambda invocation (no API Gateway)
-    if 'httpMethod' not in event and 'body' not in event:
-        return event
-
-    # API Gateway request
-    if 'body' in event and event['body']:
-        body = event['body']
-
-        # Handle base64 encoded body from API Gateway
-        if event.get('isBase64Encoded', False):
-            import base64
-            try:
-                body = base64.b64decode(body).decode('utf-8')
-                logger.info("Decoded base64 encoded request body")
-            except Exception as e:
-                logger.error(f"Failed to decode base64 body: {str(e)}")
-                raise ValueError("Invalid base64 encoded request body")
-
-        # Parse JSON body
-        if isinstance(body, str):
-            try:
-                return json.loads(body)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON body: {str(e)} - Body: {body[:200]}")
-                raise ValueError("Invalid JSON in request body")
-        else:
-            return body
-    else:
-        # No body provided
-        return {}
-
-
 def enrich_indicator(ioc_value: str, ioc_type: str, api_keys: Dict[str, str]) -> Dict[str, Any]:
     """Enrich a single indicator"""
     cache_key = f"{ioc_type}:{ioc_value}"
@@ -399,8 +368,36 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         # Get API keys
         api_keys = get_api_keys()
 
-        # Parse request using enhanced API Gateway handling
-        body = parse_api_gateway_event(event)
+        # Parse request with base64 decoding support
+        if 'body' in event and event['body']:
+            body_str = event['body']
+
+            # Handle base64 encoded body from API Gateway
+            if event.get('isBase64Encoded', False):
+                logger.info("Decoding base64 encoded body")
+                try:
+                    body_str = base64.b64decode(body_str).decode('utf-8')
+                    logger.info("Successfully decoded base64 body")
+                except Exception as e:
+                    logger.error(f"Failed to decode base64 body: {e}")
+                    return {
+                        'statusCode': 400,
+                        'headers': get_cors_headers(),
+                        'body': json.dumps({'error': 'Invalid base64 encoded request body'})
+                    }
+
+            # Parse JSON
+            try:
+                body = json.loads(body_str) if isinstance(body_str, str) else body_str
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON body: {e}")
+                return {
+                    'statusCode': 400,
+                    'headers': get_cors_headers(),
+                    'body': json.dumps({'error': 'Invalid JSON in request body'})
+                }
+        else:
+            body = event
 
         indicators = body.get('indicators', [])
         if not indicators:
@@ -411,6 +408,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         if not indicators:
             return {
                 'statusCode': 400,
+                'headers': get_cors_headers(),
                 'body': json.dumps({'error': 'No indicators provided for enrichment'})
             }
 
@@ -447,6 +445,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
 
         result = {
             'statusCode': 200,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'enriched_indicators': convert_decimals(enriched_indicators),
                 'total_processed': len(enriched_indicators),
@@ -461,6 +460,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         logger.error(f"Enrichment failed: {str(e)}")
         return {
             'statusCode': 500,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'error': 'Enrichment failed',
                 'message': str(e),
