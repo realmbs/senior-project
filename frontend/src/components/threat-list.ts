@@ -81,6 +81,9 @@ export class ThreatList extends Component<ThreatListState> {
 
     // Add fragment to container
     this.element.appendChild(fragment);
+
+    // Refresh Lucide icons after DOM update
+    this.refreshIcons();
   }
 
   private renderLoading(): void {
