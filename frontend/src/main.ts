@@ -1,4 +1,9 @@
 import './style.css'
+import { DOMBuilder } from './lib/dom-builder.js';
+import { Component } from './lib/component.js';
+import { MetricsWidget } from './components/metrics-widget.js';
+import { ThreatList } from './components/threat-list.js';
+import type { ThreatIndicator } from './components/threat-card.js';
 
 // API Configuration
 const API_CONFIG = {
@@ -7,15 +12,6 @@ const API_CONFIG = {
 };
 
 // TypeScript interfaces for API responses
-interface ThreatIndicator {
-  ioc_value: string;
-  ioc_type: string;
-  confidence: number;
-  pulse_name: string;
-  created_at: string;
-  source: string;
-}
-
 interface SearchResponse {
   results: {
     results: ThreatIndicator[];
@@ -32,237 +28,465 @@ interface DashboardMetrics {
   topSources: string[];
 }
 
-class ThreatIntelligenceDashboard {
-  private metricsData: DashboardMetrics = {
-    totalThreats: 0,
-    highRiskThreats: 0,
-    recentActivity: 0,
-    topSources: []
-  };
+interface DashboardState {
+  metricsData: DashboardMetrics;
+  recentThreats: ThreatIndicator[];
+  isLoading: boolean;
+  apiStatus: 'connecting' | 'connected' | 'error';
+}
 
-  private recentThreats: ThreatIndicator[] = [];
-  private isLoading = false;
+class ThreatIntelligenceDashboard extends Component<DashboardState> {
+  // Component instances
+  private metricsWidgets: Map<string, MetricsWidget> = new Map();
+  private threatList: ThreatList | null = null;
+
+  // Auto-refresh interval
+  private refreshInterval: number | null = null;
 
   constructor() {
+    const app = document.querySelector('#app') as HTMLElement;
+    if (!app) throw new Error('App container not found');
+
+    super(app, {
+      metricsData: {
+        totalThreats: 0,
+        highRiskThreats: 0,
+        recentActivity: 0,
+        topSources: []
+      },
+      recentThreats: [],
+      isLoading: false,
+      apiStatus: 'connecting'
+    });
+
     this.init();
   }
 
   private async init(): Promise<void> {
     console.log('🛡️ Initializing Threat Intelligence Dashboard...');
 
-    this.renderLayout();
+    this.render();
     this.setupEventListeners();
 
     // Load initial data
     await this.loadDashboardData();
 
     // Set up auto-refresh every 5 minutes
-    setInterval(() => this.loadDashboardData(), 5 * 60 * 1000);
+    this.refreshInterval = window.setInterval(() => this.loadDashboardData(), 5 * 60 * 1000);
 
     console.log('✅ Dashboard initialized successfully');
   }
 
-  private renderLayout(): void {
-    const app = document.querySelector('#app');
-    if (!app) return;
+  render(): void {
+    // Clear existing content
+    DOMBuilder.clearChildren(this.element);
 
-    app.innerHTML = `
-      <div class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 text-white">
-        <!-- Header -->
-        <header class="bg-gray-800/50 backdrop-blur-lg border-b border-gray-700/50">
-          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-16">
-              <div class="flex items-center space-x-3">
-                <div class="p-2 bg-blue-600 rounded-lg">
-                  <i data-lucide="shield-check" class="w-6 h-6"></i>
-                </div>
-                <div>
-                  <h1 class="text-xl font-bold">Threat Intelligence v1.0</h1>
-                  <p class="text-sm text-gray-400">Real-time TI Feed Analysis</p>
-                </div>
-              </div>
-              <div class="flex items-center space-x-4">
-                <div id="api-status" class="flex items-center space-x-2 text-sm">
-                  <div class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-                  <span class="text-gray-300">Connecting...</span>
-                </div>
-                <button id="refresh-btn" class="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
-                  <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                </button>
-              </div>
-            </div>
-          </div>
-        </header>
+    // Create main container
+    const mainContainer = this.createMainContainer();
+    this.element.appendChild(mainContainer);
 
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <!-- Metrics Overview -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-gray-400 text-sm">Total Threats</p>
-                  <p id="total-threats" class="text-2xl font-bold text-white">Loading...</p>
-                </div>
-                <div class="p-3 bg-red-500/20 rounded-lg">
-                  <i data-lucide="alert-triangle" class="w-6 h-6 text-red-400"></i>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-gray-400 text-sm">High Risk</p>
-                  <p id="high-risk" class="text-2xl font-bold text-white">Loading...</p>
-                </div>
-                <div class="p-3 bg-red-500/20 rounded-lg">
-                  <i data-lucide="shield-alert" class="w-6 h-6 text-red-400"></i>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-gray-400 text-sm">Recent Activity</p>
-                  <p id="recent-activity" class="text-2xl font-bold text-white">Loading...</p>
-                </div>
-                <div class="p-3 bg-yellow-500/20 rounded-lg">
-                  <i data-lucide="activity" class="w-6 h-6 text-yellow-400"></i>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-gray-400 text-sm">Data Sources</p>
-                  <p id="data-sources" class="text-2xl font-bold text-white">Loading...</p>
-                </div>
-                <div class="p-3 bg-blue-500/20 rounded-lg">
-                  <i data-lucide="database" class="w-6 h-6 text-blue-400"></i>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Recent Threats Feed -->
-            <div class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50">
-              <div class="p-6 border-b border-gray-700/50">
-                <div class="flex items-center justify-between">
-                  <h2 class="text-lg font-semibold flex items-center space-x-2">
-                    <i data-lucide="list" class="w-5 h-5"></i>
-                    <span>Recent Threats</span>
-                  </h2>
-                  <span id="threats-count" class="text-sm text-gray-400">0 items</span>
-                </div>
-              </div>
-              <div id="threats-list" class="p-6 space-y-4 max-h-96 overflow-y-auto">
-                <div class="flex items-center justify-center py-8">
-                  <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Quick Actions & IOC Lookup -->
-            <div class="space-y-6">
-              <!-- IOC Enrichment -->
-              <div class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50">
-                <div class="p-6 border-b border-gray-700/50">
-                  <h2 class="text-lg font-semibold flex items-center space-x-2">
-                    <i data-lucide="search" class="w-5 h-5"></i>
-                    <span>IOC Lookup</span>
-                  </h2>
-                </div>
-                <div class="p-6">
-                  <div class="space-y-4">
-                    <div>
-                      <input
-                        type="text"
-                        id="ioc-input"
-                        placeholder="Enter IP, domain, or hash..."
-                        class="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <button
-                      id="search-btn"
-                      class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
-                    >
-                      <i data-lucide="search" class="w-4 h-4"></i>
-                      <span>Search Threats</span>
-                    </button>
-                  </div>
-                  <div id="search-results" class="mt-6 space-y-4">
-                    <!-- Search results will appear here -->
-                  </div>
-                </div>
-              </div>
-
-              <!-- Quick Actions -->
-              <div class="grid grid-cols-1 gap-4">
-                <a href="/api-test.html" class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-blue-500/50 transition-colors group block">
-                  <div class="flex items-center space-x-3">
-                    <div class="p-2 bg-green-500/20 rounded-lg group-hover:bg-green-500/30 transition-colors">
-                      <i data-lucide="settings" class="w-5 h-5 text-green-400"></i>
-                    </div>
-                    <div>
-                      <h3 class="font-medium">API Testing</h3>
-                      <p class="text-sm text-gray-400">Test API endpoints</p>
-                    </div>
-                  </div>
-                </a>
-
-                <button id="collect-btn" class="bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-purple-500/50 transition-colors group w-full text-left">
-                  <div class="flex items-center space-x-3">
-                    <div class="p-2 bg-purple-500/20 rounded-lg group-hover:bg-purple-500/30 transition-colors">
-                      <i data-lucide="download-cloud" class="w-5 h-5 text-purple-400"></i>
-                    </div>
-                    <div>
-                      <h3 class="font-medium">Trigger Collection</h3>
-                      <p class="text-sm text-gray-400">Collect new threat data</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
-    `;
-
-    // Initialize Lucide icons after DOM is ready
+    // Initialize components after DOM is ready
     setTimeout(() => {
-      if (window.lucide) {
-        window.lucide.createIcons();
+      this.initializeComponents();
+      this.refreshIcons();
+    }, 0);
+  }
+
+  private createMainContainer(): HTMLElement {
+    return DOMBuilder.createElement('div', {
+      className: 'min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900 text-white'
+    }, [
+      this.createHeader(),
+      this.createMainContent()
+    ]);
+  }
+
+  private createHeader(): HTMLElement {
+    const header = DOMBuilder.createElement('header', {
+      className: 'bg-gray-800/50 backdrop-blur-lg border-b border-gray-700/50'
+    });
+
+    const container = DOMBuilder.createElement('div', {
+      className: 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'
+    });
+
+    const headerContent = DOMBuilder.createElement('div', {
+      className: 'flex justify-between items-center h-16'
+    });
+
+    // Left side - branding
+    const branding = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+
+    const logoContainer = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-blue-600 rounded-lg'
+    });
+    logoContainer.appendChild(DOMBuilder.createIcon('shield-check', 'w-6 h-6'));
+
+    const textContainer = DOMBuilder.createElement('div');
+    textContainer.appendChild(DOMBuilder.createElement('h1', {
+      className: 'text-xl font-bold',
+      textContent: 'Threat Intelligence v1.0'
+    }));
+    textContainer.appendChild(DOMBuilder.createElement('p', {
+      className: 'text-sm text-gray-400',
+      textContent: 'Real-time Threat Intelligence Feed Analysis'
+    }));
+
+    branding.appendChild(logoContainer);
+    branding.appendChild(textContainer);
+
+    // Right side - status and actions
+    const actions = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-4'
+    });
+
+    const apiStatus = DOMBuilder.createElement('div', {
+      id: 'api-status',
+      className: 'flex items-center space-x-2 text-sm'
+    });
+    apiStatus.appendChild(DOMBuilder.createElement('div', {
+      className: 'w-2 h-2 bg-yellow-400 rounded-full animate-pulse'
+    }));
+    apiStatus.appendChild(DOMBuilder.createElement('span', {
+      className: 'text-gray-300',
+      textContent: 'Connecting...'
+    }));
+
+    const refreshBtn = DOMBuilder.createElement('button', {
+      id: 'refresh-btn',
+      className: 'p-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors'
+    });
+    refreshBtn.appendChild(DOMBuilder.createIcon('refresh-cw', 'w-4 h-4'));
+
+    actions.appendChild(apiStatus);
+    actions.appendChild(refreshBtn);
+
+    headerContent.appendChild(branding);
+    headerContent.appendChild(actions);
+    container.appendChild(headerContent);
+    header.appendChild(container);
+
+    return header;
+  }
+
+  private createMainContent(): HTMLElement {
+    const main = DOMBuilder.createElement('main', {
+      className: 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'
+    });
+
+    // Metrics grid
+    const metricsGrid = this.createMetricsGrid();
+    main.appendChild(metricsGrid);
+
+    // Content grid
+    const contentGrid = this.createContentGrid();
+    main.appendChild(contentGrid);
+
+    return main;
+  }
+
+  private createMetricsGrid(): HTMLElement {
+    const grid = DOMBuilder.createElement('div', {
+      id: 'metrics-grid',
+      className: 'grid grid-cols-1 md:grid-cols-4 gap-6 mb-8'
+    });
+
+    // Create metric widget containers
+    const metricConfigs = [
+      { id: 'total-threats', label: 'Total Threats', icon: 'alert-triangle', color: 'red' as const },
+      { id: 'high-risk', label: 'High Risk', icon: 'shield-alert', color: 'red' as const },
+      { id: 'recent-activity', label: 'Recent Activity', icon: 'activity', color: 'yellow' as const },
+      { id: 'data-sources', label: 'Data Sources', icon: 'database', color: 'blue' as const }
+    ];
+
+    metricConfigs.forEach(config => {
+      const container = DOMBuilder.createElement('div', {
+        id: config.id + '-container',
+        className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
+      });
+      grid.appendChild(container);
+    });
+
+    return grid;
+  }
+
+  private createContentGrid(): HTMLElement {
+    const grid = DOMBuilder.createElement('div', {
+      className: 'grid grid-cols-1 lg:grid-cols-2 gap-8'
+    });
+
+    // Threats panel
+    const threatsPanel = this.createThreatsPanel();
+    grid.appendChild(threatsPanel);
+
+    // Actions panel
+    const actionsPanel = this.createActionsPanel();
+    grid.appendChild(actionsPanel);
+
+    return grid;
+  }
+
+  private createThreatsPanel(): HTMLElement {
+    const panel = DOMBuilder.createElement('div', {
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50'
+    });
+
+    // Header
+    const header = DOMBuilder.createElement('div', {
+      className: 'p-6 border-b border-gray-700/50'
+    });
+
+    const headerContent = DOMBuilder.createElement('div', {
+      className: 'flex items-center justify-between'
+    });
+
+    const title = DOMBuilder.createElement('h2', {
+      className: 'text-lg font-semibold flex items-center space-x-2'
+    });
+    title.appendChild(DOMBuilder.createIcon('list', 'w-5 h-5'));
+    title.appendChild(DOMBuilder.createElement('span', { textContent: 'Recent Threats' }));
+
+    const count = DOMBuilder.createElement('span', {
+      id: 'threats-count',
+      className: 'text-sm text-gray-400',
+      textContent: '0 items'
+    });
+
+    headerContent.appendChild(title);
+    headerContent.appendChild(count);
+    header.appendChild(headerContent);
+
+    // Content container for ThreatList
+    const content = DOMBuilder.createElement('div', {
+      id: 'threats-list',
+      className: 'p-6 space-y-4 max-h-96 overflow-y-auto'
+    });
+
+    panel.appendChild(header);
+    panel.appendChild(content);
+
+    return panel;
+  }
+
+  private createActionsPanel(): HTMLElement {
+    const panel = DOMBuilder.createElement('div', {
+      className: 'space-y-6'
+    });
+
+    // IOC Lookup section
+    const lookupSection = this.createIOCLookupSection();
+    panel.appendChild(lookupSection);
+
+    // Quick actions
+    const actionsSection = this.createQuickActionsSection();
+    panel.appendChild(actionsSection);
+
+    return panel;
+  }
+
+  private createIOCLookupSection(): HTMLElement {
+    const section = DOMBuilder.createElement('div', {
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50'
+    });
+
+    // Header
+    const header = DOMBuilder.createElement('div', {
+      className: 'p-6 border-b border-gray-700/50'
+    });
+
+    const title = DOMBuilder.createElement('h2', {
+      className: 'text-lg font-semibold flex items-center space-x-2'
+    });
+    title.appendChild(DOMBuilder.createIcon('search', 'w-5 h-5'));
+    title.appendChild(DOMBuilder.createElement('span', { textContent: 'IOC Lookup' }));
+
+    header.appendChild(title);
+
+    // Content
+    const content = DOMBuilder.createElement('div', {
+      className: 'p-6'
+    });
+
+    const form = DOMBuilder.createElement('div', {
+      className: 'space-y-4'
+    });
+
+    const inputContainer = DOMBuilder.createElement('div');
+    const input = DOMBuilder.createElement('input', {
+      id: 'ioc-input',
+      attributes: {
+        type: 'text',
+        placeholder: 'Enter IP, domain, or hash...'
+      },
+      className: 'w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500'
+    });
+    inputContainer.appendChild(input);
+
+    const button = DOMBuilder.createElement('button', {
+      id: 'search-btn',
+      className: 'w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2'
+    });
+    button.appendChild(DOMBuilder.createIcon('search', 'w-4 h-4'));
+    button.appendChild(DOMBuilder.createElement('span', { textContent: 'Search Threats' }));
+
+    form.appendChild(inputContainer);
+    form.appendChild(button);
+
+    const results = DOMBuilder.createElement('div', {
+      id: 'search-results',
+      className: 'mt-6 space-y-4'
+    });
+
+    content.appendChild(form);
+    content.appendChild(results);
+
+    section.appendChild(header);
+    section.appendChild(content);
+
+    return section;
+  }
+
+  private createQuickActionsSection(): HTMLElement {
+    const section = DOMBuilder.createElement('div', {
+      className: 'grid grid-cols-1 gap-4'
+    });
+
+    // API Testing link
+    const apiTestLink = DOMBuilder.createElement('a', {
+      attributes: { href: '/api-test.html' },
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-blue-500/50 transition-colors group block'
+    });
+
+    const apiTestContent = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+
+    const apiTestIcon = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-green-500/20 rounded-lg group-hover:bg-green-500/30 transition-colors'
+    });
+    apiTestIcon.appendChild(DOMBuilder.createIcon('settings', 'w-5 h-5 text-green-400'));
+
+    const apiTestText = DOMBuilder.createElement('div');
+    apiTestText.appendChild(DOMBuilder.createElement('h3', {
+      className: 'font-medium',
+      textContent: 'API Testing'
+    }));
+    apiTestText.appendChild(DOMBuilder.createElement('p', {
+      className: 'text-sm text-gray-400',
+      textContent: 'Test API endpoints'
+    }));
+
+    apiTestContent.appendChild(apiTestIcon);
+    apiTestContent.appendChild(apiTestText);
+    apiTestLink.appendChild(apiTestContent);
+
+    // Collection button
+    const collectBtn = DOMBuilder.createElement('button', {
+      id: 'collect-btn',
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-purple-500/50 transition-colors group w-full text-left'
+    });
+
+    const collectContent = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+
+    const collectIcon = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-purple-500/20 rounded-lg group-hover:bg-purple-500/30 transition-colors'
+    });
+    collectIcon.appendChild(DOMBuilder.createIcon('download-cloud', 'w-5 h-5 text-purple-400'));
+
+    const collectText = DOMBuilder.createElement('div');
+    collectText.appendChild(DOMBuilder.createElement('h3', {
+      className: 'font-medium',
+      textContent: 'Trigger Collection'
+    }));
+    collectText.appendChild(DOMBuilder.createElement('p', {
+      className: 'text-sm text-gray-400',
+      textContent: 'Collect new threat data'
+    }));
+
+    collectContent.appendChild(collectIcon);
+    collectContent.appendChild(collectText);
+    collectBtn.appendChild(collectContent);
+
+    section.appendChild(apiTestLink);
+    section.appendChild(collectBtn);
+
+    return section;
+  }
+
+  private initializeComponents(): void {
+    // Initialize metrics widgets
+    const metricConfigs = [
+      { id: 'total-threats', label: 'Total Threats', icon: 'alert-triangle', color: 'red' as const },
+      { id: 'high-risk', label: 'High Risk', icon: 'shield-alert', color: 'red' as const },
+      { id: 'recent-activity', label: 'Recent Activity', icon: 'activity', color: 'yellow' as const },
+      { id: 'data-sources', label: 'Data Sources', icon: 'database', color: 'blue' as const }
+    ];
+
+    metricConfigs.forEach(config => {
+      const container = this.querySelector(`#${config.id}-container`);
+      if (container) {
+        const widget = new MetricsWidget(container, config.label, config.icon, config.color);
+        this.metricsWidgets.set(config.id, widget);
       }
-    }, 100);
+    });
+
+    // Initialize threat list
+    const threatsContainer = this.querySelector('#threats-list');
+    if (threatsContainer) {
+      this.threatList = new ThreatList(threatsContainer, (ioc) => this.handleThreatClick(ioc));
+    }
+  }
+
+  private handleThreatClick(ioc: string): void {
+    const input = this.querySelector('#ioc-input') as HTMLInputElement;
+    if (input) {
+      input.value = ioc;
+      this.handleSearch();
+    }
+  }
+
+  update(): void {
+    // Update is handled through state observers and component updates
   }
 
   private setupEventListeners(): void {
     // Refresh button
-    const refreshBtn = document.getElementById('refresh-btn');
-    refreshBtn?.addEventListener('click', () => this.loadDashboardData());
+    const refreshBtn = this.querySelector('#refresh-btn');
+    if (refreshBtn) {
+      this.addEventListener(refreshBtn, 'click', () => this.loadDashboardData());
+    }
 
     // Search functionality
-    const searchBtn = document.getElementById('search-btn');
-    const iocInput = document.getElementById('ioc-input') as HTMLInputElement;
+    const searchBtn = this.querySelector('#search-btn');
+    const iocInput = this.querySelector('#ioc-input') as HTMLInputElement;
 
-    searchBtn?.addEventListener('click', () => this.handleSearch());
-    iocInput?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        this.handleSearch();
-      }
-    });
+    if (searchBtn) {
+      this.addEventListener(searchBtn, 'click', () => this.handleSearch());
+    }
+
+    if (iocInput) {
+      this.addEventListener(iocInput, 'keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.handleSearch();
+        }
+      });
+    }
 
     // Collection trigger
-    const collectBtn = document.getElementById('collect-btn');
-    collectBtn?.addEventListener('click', () => this.triggerCollection());
+    const collectBtn = this.querySelector('#collect-btn');
+    if (collectBtn) {
+      this.addEventListener(collectBtn, 'click', () => this.triggerCollection());
+    }
   }
 
   private async loadDashboardData(): Promise<void> {
-    if (this.isLoading) return;
-    this.isLoading = true;
+    if (this.state.isLoading) return;
+
+    this.setState({ isLoading: true, apiStatus: 'connecting' });
 
     try {
       // Update API status
@@ -273,12 +497,20 @@ class ThreatIntelligenceDashboard {
 
       if (response.ok) {
         const data: SearchResponse = await response.json();
-        this.recentThreats = data.results.results || [];
+        const threats = data.results.results || [];
 
         // Calculate metrics
-        this.calculateMetrics();
+        const metricsData = this.calculateMetrics(threats);
 
-        // Update UI
+        // Update state
+        this.setState({
+          recentThreats: threats,
+          metricsData,
+          isLoading: false,
+          apiStatus: 'connected'
+        });
+
+        // Update components
         this.updateMetricsDisplay();
         this.updateThreatsDisplay();
         this.updateApiStatus('connected');
@@ -287,17 +519,14 @@ class ThreatIntelligenceDashboard {
       }
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
+      this.setState({ isLoading: false, apiStatus: 'error' });
       this.updateApiStatus('error');
       this.showNotification('Failed to load dashboard data', 'error');
-    } finally {
-      this.isLoading = false;
     }
   }
 
-  private calculateMetrics(): void {
-    const threats = this.recentThreats;
-
-    this.metricsData = {
+  private calculateMetrics(threats: ThreatIndicator[]): DashboardMetrics {
+    return {
       totalThreats: threats.length,
       highRiskThreats: threats.filter(t => t.confidence >= 80).length,
       recentActivity: threats.filter(t => {
@@ -311,80 +540,33 @@ class ThreatIntelligenceDashboard {
   }
 
   private updateMetricsDisplay(): void {
-    const elements = {
-      totalThreats: document.getElementById('total-threats'),
-      highRisk: document.getElementById('high-risk'),
-      recentActivity: document.getElementById('recent-activity'),
-      dataSources: document.getElementById('data-sources')
-    };
+    const { metricsData } = this.state;
 
-    if (elements.totalThreats) elements.totalThreats.textContent = this.metricsData.totalThreats.toString();
-    if (elements.highRisk) elements.highRisk.textContent = this.metricsData.highRiskThreats.toString();
-    if (elements.recentActivity) elements.recentActivity.textContent = this.metricsData.recentActivity.toString();
-    if (elements.dataSources) elements.dataSources.textContent = this.metricsData.topSources.length.toString();
+    // Update metrics widgets using component methods
+    this.metricsWidgets.get('total-threats')?.updateValue(metricsData.totalThreats);
+    this.metricsWidgets.get('high-risk')?.updateValue(metricsData.highRiskThreats);
+    this.metricsWidgets.get('recent-activity')?.updateValue(metricsData.recentActivity);
+    this.metricsWidgets.get('data-sources')?.updateValue(metricsData.topSources.length);
   }
 
   private updateThreatsDisplay(): void {
-    const container = document.getElementById('threats-list');
-    const countElement = document.getElementById('threats-count');
+    const { recentThreats } = this.state;
+    const countElement = this.querySelector('#threats-count');
 
-    if (!container || !countElement) return;
-
-    countElement.textContent = `${this.recentThreats.length} items`;
-
-    if (this.recentThreats.length === 0) {
-      container.innerHTML = `
-        <div class="text-center py-8 text-gray-400">
-          <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>
-          <p>No threats found</p>
-        </div>
-      `;
-      return;
+    if (countElement) {
+      countElement.textContent = `${recentThreats.length} items`;
     }
 
-    container.innerHTML = this.recentThreats.slice(0, 10).map(threat => `
-      <div class="bg-gray-700/30 rounded-lg p-4 border border-gray-600/30 hover:border-gray-500/50 transition-colors">
-        <div class="flex items-start justify-between">
-          <div class="flex-1">
-            <div class="flex items-center space-x-2 mb-2">
-              <span class="px-2 py-1 bg-${this.getThreatColor(threat.confidence)}-500/20 text-${this.getThreatColor(threat.confidence)}-400 text-xs rounded-full">
-                ${threat.ioc_type.toUpperCase()}
-              </span>
-              <span class="text-xs text-gray-400">${threat.confidence}% confidence</span>
-            </div>
-            <p class="text-white font-mono text-sm break-all">${threat.ioc_value}</p>
-            <p class="text-gray-400 text-sm mt-1">${threat.pulse_name || threat.source || 'Unknown Source'}</p>
-          </div>
-          <button class="search-threat-btn text-gray-400 hover:text-blue-400 transition-colors" data-ioc="${threat.ioc_value}">
-            <i data-lucide="external-link" class="w-4 h-4"></i>
-          </button>
-        </div>
-      </div>
-    `).join('');
-
-    // Add event listeners for search buttons
-    container.querySelectorAll('.search-threat-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const target = e.currentTarget as HTMLElement;
-        const ioc = target.dataset.ioc;
-        if (ioc) {
-          const input = document.getElementById('ioc-input') as HTMLInputElement;
-          input.value = ioc;
-          this.handleSearch();
-        }
-      });
-    });
-
-    // Refresh Lucide icons
-    if (window.lucide) {
-      window.lucide.createIcons();
+    // Update threat list component
+    if (this.threatList) {
+      this.threatList.updateThreats(recentThreats);
     }
   }
 
   private async handleSearch(): Promise<void> {
-    const input = document.getElementById('ioc-input') as HTMLInputElement;
-    const resultsContainer = document.getElementById('search-results');
-    const searchBtn = document.getElementById('search-btn');
+    const input = this.querySelector('#ioc-input') as HTMLInputElement;
+    const resultsContainer = this.querySelector('#search-results');
+    const searchBtn = this.querySelector('#search-btn');
 
     if (!input || !resultsContainer || !searchBtn) return;
 
@@ -395,10 +577,7 @@ class ThreatIntelligenceDashboard {
     }
 
     // Show loading state
-    searchBtn.innerHTML = `
-      <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-      <span>Searching...</span>
-    `;
+    this.setSearchButtonLoading(searchBtn, true);
 
     try {
       const response = await this.apiCall(`/search?query=${encodeURIComponent(query)}&limit=10`);
@@ -412,60 +591,123 @@ class ThreatIntelligenceDashboard {
     } catch (error) {
       console.error('Search failed:', error);
       this.showNotification('Search failed', 'error');
-      resultsContainer.innerHTML = '<p class="text-gray-400">Search failed. Please try again.</p>';
+      this.displaySearchError(resultsContainer);
     } finally {
-      // Reset button
-      searchBtn.innerHTML = `
-        <i data-lucide="search" class="w-4 h-4"></i>
-        <span>Search Threats</span>
-      `;
-      if (window.lucide) {
-        window.lucide.createIcons();
-      }
+      this.setSearchButtonLoading(searchBtn, false);
     }
+  }
+
+  private setSearchButtonLoading(button: HTMLElement, loading: boolean): void {
+    DOMBuilder.clearChildren(button);
+
+    if (loading) {
+      button.appendChild(DOMBuilder.createElement('div', {
+        className: 'animate-spin rounded-full h-4 w-4 border-b-2 border-white'
+      }));
+      button.appendChild(DOMBuilder.createElement('span', {
+        textContent: 'Searching...'
+      }));
+    } else {
+      button.appendChild(DOMBuilder.createIcon('search', 'w-4 h-4'));
+      button.appendChild(DOMBuilder.createElement('span', {
+        textContent: 'Search Threats'
+      }));
+      this.refreshIcons();
+    }
+  }
+
+  private displaySearchError(container: HTMLElement): void {
+    DOMBuilder.clearChildren(container);
+    container.appendChild(DOMBuilder.createElement('p', {
+      className: 'text-gray-400',
+      textContent: 'Search failed. Please try again.'
+    }));
   }
 
   private displaySearchResults(results: ThreatIndicator[], container: HTMLElement): void {
+    DOMBuilder.clearChildren(container);
+
     if (results.length === 0) {
-      container.innerHTML = '<p class="text-gray-400">No threats found for this query.</p>';
+      container.appendChild(DOMBuilder.createElement('p', {
+        className: 'text-gray-400',
+        textContent: 'No threats found for this query.'
+      }));
       return;
     }
 
-    container.innerHTML = `
-      <div class="space-y-3">
-        <h4 class="text-sm font-medium text-gray-300">Search Results (${results.length})</h4>
-        ${results.map(threat => `
-          <div class="bg-gray-700/20 rounded-lg p-3 border border-gray-600/20">
-            <div class="flex items-center space-x-2 mb-1">
-              <span class="px-2 py-1 bg-${this.getThreatColor(threat.confidence)}-500/20 text-${this.getThreatColor(threat.confidence)}-400 text-xs rounded">
-                ${threat.ioc_type.toUpperCase()}
-              </span>
-              <span class="text-xs text-gray-400">${threat.confidence}% confidence</span>
-            </div>
-            <p class="text-white font-mono text-sm break-all">${threat.ioc_value}</p>
-            <p class="text-gray-400 text-xs mt-1">${threat.pulse_name || threat.source || 'Unknown Source'}</p>
-          </div>
-        `).join('')}
-      </div>
-    `;
+    const resultsContainer = DOMBuilder.createElement('div', {
+      className: 'space-y-3'
+    });
+
+    // Add header
+    const header = DOMBuilder.createElement('h4', {
+      className: 'text-sm font-medium text-gray-300',
+      textContent: `Search Results (${results.length})`
+    });
+    resultsContainer.appendChild(header);
+
+    // Add results using DocumentFragment for efficiency
+    const fragment = document.createDocumentFragment();
+    results.forEach(threat => {
+      const resultItem = this.createSearchResultItem(threat);
+      fragment.appendChild(resultItem);
+    });
+
+    resultsContainer.appendChild(fragment);
+    container.appendChild(resultsContainer);
+  }
+
+  private createSearchResultItem(threat: ThreatIndicator): HTMLElement {
+    const item = DOMBuilder.createElement('div', {
+      className: 'bg-gray-700/20 rounded-lg p-3 border border-gray-600/20'
+    });
+
+    // Badge container
+    const badgeContainer = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2 mb-1'
+    });
+
+    const iocBadge = DOMBuilder.createBadge(
+      threat.ioc_type.toUpperCase(),
+      this.getThreatColor(threat.confidence)
+    );
+
+    const confidenceBadge = DOMBuilder.createElement('span', {
+      className: 'text-xs text-gray-400',
+      textContent: `${threat.confidence}% confidence`
+    });
+
+    badgeContainer.appendChild(iocBadge);
+    badgeContainer.appendChild(confidenceBadge);
+
+    // IOC value
+    const iocValue = DOMBuilder.createElement('p', {
+      className: 'text-white font-mono text-sm break-all',
+      textContent: threat.ioc_value
+    });
+
+    // Source
+    const source = DOMBuilder.createElement('p', {
+      className: 'text-gray-400 text-xs mt-1',
+      textContent: threat.pulse_name || threat.source || 'Unknown Source'
+    });
+
+    item.appendChild(badgeContainer);
+    item.appendChild(iocValue);
+    item.appendChild(source);
+
+    return item;
   }
 
   private async triggerCollection(): Promise<void> {
-    const collectBtn = document.getElementById('collect-btn');
+    const collectBtn = this.querySelector('#collect-btn');
     if (!collectBtn) return;
 
-    const originalContent = collectBtn.innerHTML;
-    collectBtn.innerHTML = `
-      <div class="flex items-center space-x-3">
-        <div class="p-2 bg-purple-500/20 rounded-lg">
-          <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400"></div>
-        </div>
-        <div>
-          <h3 class="font-medium">Collecting...</h3>
-          <p class="text-sm text-gray-400">This may take a moment</p>
-        </div>
-      </div>
-    `;
+    // Store original content
+    const originalContent = collectBtn.cloneNode(true) as HTMLElement;
+
+    // Set loading state
+    this.setCollectionButtonLoading(collectBtn, true);
 
     try {
       const response = await this.apiCall('/collect', 'POST', {});
@@ -481,12 +723,51 @@ class ThreatIntelligenceDashboard {
       console.error('Collection failed:', error);
       this.showNotification('Collection failed', 'error');
     } finally {
-      collectBtn.innerHTML = originalContent;
+      // Restore original content
+      DOMBuilder.clearChildren(collectBtn);
+      while (originalContent.firstChild) {
+        collectBtn.appendChild(originalContent.firstChild);
+      }
+      this.refreshIcons();
     }
   }
 
+  private setCollectionButtonLoading(button: HTMLElement, loading: boolean): void {
+    if (!loading) return; // Restoration is handled in finally block
+
+    DOMBuilder.clearChildren(button);
+
+    const container = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+
+    const iconContainer = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-purple-500/20 rounded-lg'
+    });
+
+    const spinner = DOMBuilder.createElement('div', {
+      className: 'animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400'
+    });
+
+    iconContainer.appendChild(spinner);
+
+    const textContainer = DOMBuilder.createElement('div');
+    textContainer.appendChild(DOMBuilder.createElement('h3', {
+      className: 'font-medium',
+      textContent: 'Collecting...'
+    }));
+    textContainer.appendChild(DOMBuilder.createElement('p', {
+      className: 'text-sm text-gray-400',
+      textContent: 'This may take a moment'
+    }));
+
+    container.appendChild(iconContainer);
+    container.appendChild(textContainer);
+    button.appendChild(container);
+  }
+
   private updateApiStatus(status: 'connecting' | 'connected' | 'error'): void {
-    const statusElement = document.getElementById('api-status');
+    const statusElement = this.querySelector('#api-status');
     if (!statusElement) return;
 
     const statusConfig = {
@@ -496,16 +777,51 @@ class ThreatIntelligenceDashboard {
     };
 
     const config = statusConfig[status];
-    statusElement.innerHTML = `
-      <div class="w-2 h-2 bg-${config.color}-400 rounded-full animate-pulse"></div>
-      <span class="text-gray-300">${config.text}</span>
-    `;
+    DOMBuilder.clearChildren(statusElement);
+
+    const indicator = DOMBuilder.createElement('div', {
+      className: `w-2 h-2 bg-${config.color}-400 rounded-full animate-pulse`
+    });
+
+    const text = DOMBuilder.createElement('span', {
+      className: 'text-gray-300',
+      textContent: config.text
+    });
+
+    statusElement.appendChild(indicator);
+    statusElement.appendChild(text);
   }
 
-  private getThreatColor(confidence: number): string {
+  private getThreatColor(confidence: number): 'red' | 'yellow' | 'gray' {
     if (confidence >= 80) return 'red';
     if (confidence >= 60) return 'yellow';
     return 'gray';
+  }
+
+  // Enhanced cleanup with proper component lifecycle management
+  destroy(): void {
+    // Clear auto-refresh interval
+    if (this.refreshInterval) {
+      window.clearInterval(this.refreshInterval);
+      this.refreshInterval = null;
+    }
+
+    // Destroy all metric widgets
+    for (const widget of this.metricsWidgets.values()) {
+      widget.destroy();
+    }
+    this.metricsWidgets.clear();
+
+    // Destroy threat list
+    if (this.threatList) {
+      this.threatList.destroy();
+      this.threatList = null;
+    }
+
+    // Call parent destroy
+    super.destroy();
+
+    console.log('🛡️ Dashboard destroyed and cleaned up');
   }
 
   private async apiCall(endpoint: string, method: string = 'GET', body?: any): Promise<Response> {
