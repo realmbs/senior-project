@@ -205,17 +205,20 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     // Create metric widget containers
     const metricConfigs = [
-      { id: 'total-threats', label: 'Total Threats', icon: 'alert-triangle', color: 'red' as const },
+      { id: 'total-threats', label: 'All Threats', icon: 'alert-triangle', color: 'red' as const },
       { id: 'high-risk', label: 'High Risk', icon: 'shield-alert', color: 'red' as const },
       { id: 'recent-activity', label: 'Recent Activity', icon: 'activity', color: 'yellow' as const },
       { id: 'data-sources', label: 'Data Sources', icon: 'database', color: 'blue' as const }
     ];
 
     metricConfigs.forEach(config => {
+      // Make data-sources clickable
+      const isDataSources = config.id === 'data-sources';
       const container = DOMBuilder.createElement('div', {
         id: config.id + '-container',
-        className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
+        className: `bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6 ${isDataSources ? 'cursor-pointer hover:border-blue-500/50 transition-colors' : ''}`
       });
+
       grid.appendChild(container);
     });
 
@@ -472,7 +475,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     // Initialize metrics widgets
     const metricConfigs = [
-      { id: 'total-threats', label: 'Total Threats', icon: 'alert-triangle', color: 'red' as const },
+      { id: 'total-threats', label: 'All Threats', icon: 'alert-triangle', color: 'red' as const },
       { id: 'high-risk', label: 'High Risk', icon: 'shield-alert', color: 'red' as const },
       { id: 'recent-activity', label: 'Recent Activity', icon: 'activity', color: 'yellow' as const },
       { id: 'data-sources', label: 'Data Sources', icon: 'database', color: 'blue' as const }
@@ -484,6 +487,15 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
         console.log(`✅ Creating ${config.id} widget`);
         const widget = new MetricsWidget(container, config.label, config.icon, config.color);
         this.metricsWidgets.set(config.id, widget);
+
+        // Add click handler for data-sources widget
+        if (config.id === 'data-sources') {
+          container.addEventListener('click', () => {
+            this.showDataSourcesModal();
+          });
+          // Make sure container has pointer cursor
+          container.style.cursor = 'pointer';
+        }
       } else {
         console.error(`❌ Container not found: ${config.id}-container`);
       }
@@ -629,7 +641,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         return created > sevenDaysAgo;
       }).length,
-      topSources: [...new Set(threats.map(t => t.source))].slice(0, 3)
+      topSources: [...new Set(threats.map(t => t.source).filter(s => s))].slice(0, 3)
     };
   }
 
@@ -1190,6 +1202,212 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
   private closeThreatDetailsModal(): void {
     const modal = document.getElementById('threat-details-modal');
+    if (modal) {
+      modal.remove();
+    }
+  }
+
+  private showDataSourcesModal(): void {
+    // Create modal overlay
+    const overlay = DOMBuilder.createElement('div', {
+      id: 'data-sources-modal',
+      className: 'fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4'
+    });
+
+    // Create modal container
+    const modal = DOMBuilder.createElement('div', {
+      className: 'bg-gray-800 rounded-xl border border-gray-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl'
+    });
+
+    // Modal header
+    const header = DOMBuilder.createElement('div', {
+      className: 'sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between z-10'
+    });
+
+    const headerTitle = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+    headerTitle.appendChild(DOMBuilder.createIcon('database', 'w-6 h-6 text-blue-400'));
+    headerTitle.appendChild(DOMBuilder.createElement('h2', {
+      className: 'text-xl font-bold text-white',
+      textContent: 'Threat Intelligence Data Sources'
+    }));
+
+    const closeButton = DOMBuilder.createElement('button', {
+      id: 'close-sources-modal-btn',
+      className: 'p-2 hover:bg-gray-700 rounded-lg transition-colors'
+    });
+    closeButton.appendChild(DOMBuilder.createIcon('x', 'w-5 h-5 text-gray-400'));
+
+    header.appendChild(headerTitle);
+    header.appendChild(closeButton);
+
+    // Modal content
+    const content = DOMBuilder.createElement('div', {
+      className: 'p-6 space-y-6'
+    });
+
+    // Get unique sources from threats (filter out undefined/null)
+    const { recentThreats } = this.state;
+    const sources = [...new Set(recentThreats.map(t => t.source).filter(s => s))];
+
+    // Overview section
+    const overviewSection = DOMBuilder.createElement('div', {
+      className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
+    });
+
+    const overviewTitle = DOMBuilder.createElement('h3', {
+      className: 'text-lg font-semibold text-white mb-3 flex items-center space-x-2'
+    });
+    overviewTitle.appendChild(DOMBuilder.createIcon('info', 'w-4 h-4'));
+    overviewTitle.appendChild(DOMBuilder.createElement('span', { textContent: 'Overview' }));
+
+    const overviewStats = DOMBuilder.createElement('div', {
+      className: 'grid grid-cols-2 gap-4 text-sm'
+    });
+
+    const totalSources = DOMBuilder.createElement('div');
+    totalSources.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-gray-400',
+      textContent: 'Active Sources:'
+    }));
+    totalSources.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-white font-semibold text-lg',
+      textContent: sources.length.toString()
+    }));
+
+    const totalThreats = DOMBuilder.createElement('div');
+    totalThreats.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-gray-400',
+      textContent: 'Total Indicators:'
+    }));
+    totalThreats.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-white font-semibold text-lg',
+      textContent: recentThreats.length.toString()
+    }));
+
+    overviewStats.appendChild(totalSources);
+    overviewStats.appendChild(totalThreats);
+    overviewSection.appendChild(overviewTitle);
+    overviewSection.appendChild(overviewStats);
+    content.appendChild(overviewSection);
+
+    // Data sources list
+    const sourcesSection = DOMBuilder.createElement('div');
+
+    const sourcesTitle = DOMBuilder.createElement('h3', {
+      className: 'text-lg font-semibold text-white mb-3 flex items-center space-x-2'
+    });
+    sourcesTitle.appendChild(DOMBuilder.createIcon('list', 'w-4 h-4'));
+    sourcesTitle.appendChild(DOMBuilder.createElement('span', { textContent: 'Connected Sources' }));
+    sourcesSection.appendChild(sourcesTitle);
+
+    // Source details
+    const sourcesList = DOMBuilder.createElement('div', {
+      className: 'space-y-3'
+    });
+
+    const sourceInfo = {
+      'otx': {
+        name: 'AlienVault OTX',
+        description: 'Open Threat Exchange - Community-driven threat intelligence',
+        url: 'https://otx.alienvault.com',
+        icon: 'shield'
+      },
+      'abuse.ch': {
+        name: 'Abuse.ch',
+        description: 'Feodo Tracker, URLhaus, and malware bazaar feeds',
+        url: 'https://abuse.ch',
+        icon: 'alert-octagon'
+      }
+    };
+
+    sources.forEach(source => {
+      const info = sourceInfo[source] || {
+        name: source.toUpperCase(),
+        description: 'Threat intelligence feed',
+        url: '#',
+        icon: 'database'
+      };
+
+      const threatCount = recentThreats.filter(t => t.source === source).length;
+
+      const sourceCard = DOMBuilder.createElement('div', {
+        className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
+      });
+
+      const sourceHeader = DOMBuilder.createElement('div', {
+        className: 'flex items-start justify-between mb-2'
+      });
+
+      const sourceLeft = DOMBuilder.createElement('div', {
+        className: 'flex items-center space-x-3'
+      });
+
+      const sourceIconContainer = DOMBuilder.createElement('div', {
+        className: 'p-2 bg-blue-500/20 rounded-lg'
+      });
+      sourceIconContainer.appendChild(DOMBuilder.createIcon(info.icon, 'w-5 h-5 text-blue-400'));
+
+      const sourceNameContainer = DOMBuilder.createElement('div');
+      sourceNameContainer.appendChild(DOMBuilder.createElement('h4', {
+        className: 'font-semibold text-white',
+        textContent: info.name
+      }));
+      sourceNameContainer.appendChild(DOMBuilder.createElement('p', {
+        className: 'text-xs text-gray-400',
+        textContent: info.description
+      }));
+
+      sourceLeft.appendChild(sourceIconContainer);
+      sourceLeft.appendChild(sourceNameContainer);
+
+      const sourceBadge = DOMBuilder.createBadge(`${threatCount} indicators`, 'blue');
+
+      sourceHeader.appendChild(sourceLeft);
+      sourceHeader.appendChild(sourceBadge);
+
+      sourceCard.appendChild(sourceHeader);
+
+      sourcesList.appendChild(sourceCard);
+    });
+
+    sourcesSection.appendChild(sourcesList);
+    content.appendChild(sourcesSection);
+
+    // Assemble modal
+    modal.appendChild(header);
+    modal.appendChild(content);
+    overlay.appendChild(modal);
+
+    // Add to body
+    document.body.appendChild(overlay);
+
+    // Refresh icons and setup close handlers
+    this.refreshIcons();
+
+    // Close on button click
+    closeButton.addEventListener('click', () => this.closeDataSourcesModal());
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        this.closeDataSourcesModal();
+      }
+    });
+
+    // Close on Escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.closeDataSourcesModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+  }
+
+  private closeDataSourcesModal(): void {
+    const modal = document.getElementById('data-sources-modal');
     if (modal) {
       modal.remove();
     }
