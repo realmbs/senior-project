@@ -222,7 +222,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
   private createContentGrid(): HTMLElement {
     const grid = DOMBuilder.createElement('div', {
-      className: 'grid grid-cols-1 lg:grid-cols-2 gap-8'
+      className: 'grid grid-cols-1 lg:grid-cols-2 gap-8 items-start'
     });
 
     // Threats panel
