@@ -13,6 +13,12 @@ export interface ThreatIndicator {
   pulse_name: string;
   created_at: string;
   source: string;
+  stix_data?: {
+    pattern?: string;
+    id?: string;
+    labels?: string[];
+    [key: string]: any;
+  };
 }
 
 interface ThreatCardState {

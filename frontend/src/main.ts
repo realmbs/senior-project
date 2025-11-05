@@ -838,8 +838,9 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   }
 
   private createSearchResultItem(threat: ThreatIndicator): HTMLElement {
-    const item = DOMBuilder.createElement('div', {
-      className: 'bg-gray-700/20 rounded-lg p-3 border border-gray-600/20'
+    const item = DOMBuilder.createElement('button', {
+      className: 'bg-gray-700/20 rounded-lg p-3 border border-gray-600/20 hover:bg-gray-700/40 hover:border-blue-500/50 transition-all cursor-pointer w-full text-left',
+      dataset: { threatData: JSON.stringify(threat) }
     });
 
     // Badge container
@@ -875,6 +876,9 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     item.appendChild(badgeContainer);
     item.appendChild(iocValue);
     item.appendChild(source);
+
+    // Add click handler to show modal
+    item.addEventListener('click', () => this.showThreatDetailsModal(threat));
 
     return item;
   }
@@ -976,6 +980,219 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     if (confidence >= 80) return 'red';
     if (confidence >= 60) return 'yellow';
     return 'gray';
+  }
+
+  private showThreatDetailsModal(threat: ThreatIndicator): void {
+    // Create modal overlay
+    const overlay = DOMBuilder.createElement('div', {
+      id: 'threat-details-modal',
+      className: 'fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4'
+    });
+
+    // Create modal container
+    const modal = DOMBuilder.createElement('div', {
+      className: 'bg-gray-800 rounded-xl border border-gray-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl'
+    });
+
+    // Modal header
+    const header = DOMBuilder.createElement('div', {
+      className: 'sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between z-10'
+    });
+
+    const headerTitle = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+    headerTitle.appendChild(DOMBuilder.createIcon('shield-alert', 'w-6 h-6 text-blue-400'));
+    headerTitle.appendChild(DOMBuilder.createElement('h2', {
+      className: 'text-xl font-bold text-white',
+      textContent: 'Threat Details'
+    }));
+
+    const closeButton = DOMBuilder.createElement('button', {
+      id: 'close-modal-btn',
+      className: 'p-2 hover:bg-gray-700 rounded-lg transition-colors'
+    });
+    closeButton.appendChild(DOMBuilder.createIcon('x', 'w-5 h-5 text-gray-400'));
+
+    header.appendChild(headerTitle);
+    header.appendChild(closeButton);
+
+    // Modal content
+    const content = DOMBuilder.createElement('div', {
+      className: 'p-6 space-y-6'
+    });
+
+    // IOC Information
+    const iocSection = this.createModalSection('IOC Information', [
+      { label: 'IOC Value', value: threat.ioc_value, mono: true },
+      { label: 'IOC Type', value: threat.ioc_type.toUpperCase() },
+      { label: 'Confidence', value: `${threat.confidence}%`, badge: this.getThreatColor(threat.confidence) }
+    ]);
+    content.appendChild(iocSection);
+
+    // Source Information
+    const sourceSection = this.createModalSection('Source Information', [
+      { label: 'Source', value: threat.source || 'Unknown' },
+      { label: 'Pulse Name', value: threat.pulse_name || 'N/A' },
+      { label: 'Created', value: new Date(threat.created_at).toLocaleString() }
+    ]);
+    content.appendChild(sourceSection);
+
+    // STIX Data (if available)
+    if (threat.stix_data) {
+      const stixDetails: Array<{label: string, value: string, mono?: boolean}> = [];
+
+      if (threat.stix_data.pattern) {
+        stixDetails.push({ label: 'Pattern', value: threat.stix_data.pattern, mono: true });
+      }
+      if (threat.stix_data.id) {
+        stixDetails.push({ label: 'STIX ID', value: threat.stix_data.id, mono: true });
+      }
+      if (threat.stix_data.labels && Array.isArray(threat.stix_data.labels)) {
+        stixDetails.push({ label: 'Labels', value: threat.stix_data.labels.join(', ') });
+      }
+
+      if (stixDetails.length > 0) {
+        const stixSection = this.createModalSection('STIX 2.1 Data', stixDetails);
+        content.appendChild(stixSection);
+      }
+    }
+
+    // Raw JSON (expandable)
+    const rawSection = this.createRawDataSection(threat);
+    content.appendChild(rawSection);
+
+    // Assemble modal
+    modal.appendChild(header);
+    modal.appendChild(content);
+    overlay.appendChild(modal);
+
+    // Add to body
+    document.body.appendChild(overlay);
+
+    // Refresh icons and setup close handlers
+    this.refreshIcons();
+
+    // Close on button click
+    closeButton.addEventListener('click', () => this.closeThreatDetailsModal());
+
+    // Close on overlay click (not modal content)
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        this.closeThreatDetailsModal();
+      }
+    });
+
+    // Close on Escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.closeThreatDetailsModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+  }
+
+  private createModalSection(title: string, fields: Array<{label: string, value: string, mono?: boolean, badge?: 'red' | 'yellow' | 'gray'}>): HTMLElement {
+    const section = DOMBuilder.createElement('div');
+
+    const sectionTitle = DOMBuilder.createElement('h3', {
+      className: 'text-lg font-semibold text-white mb-3 flex items-center space-x-2'
+    });
+    sectionTitle.appendChild(DOMBuilder.createIcon('info', 'w-4 h-4'));
+    sectionTitle.appendChild(DOMBuilder.createElement('span', { textContent: title }));
+
+    section.appendChild(sectionTitle);
+
+    const grid = DOMBuilder.createElement('div', {
+      className: 'space-y-3'
+    });
+
+    fields.forEach(field => {
+      const row = DOMBuilder.createElement('div', {
+        className: 'flex flex-col sm:flex-row sm:items-center'
+      });
+
+      const label = DOMBuilder.createElement('div', {
+        className: 'text-sm text-gray-400 sm:w-1/3',
+        textContent: field.label + ':'
+      });
+
+      const valueContainer = DOMBuilder.createElement('div', {
+        className: 'sm:w-2/3'
+      });
+
+      if (field.badge) {
+        valueContainer.appendChild(DOMBuilder.createBadge(field.value, field.badge));
+      } else {
+        const value = DOMBuilder.createElement('div', {
+          className: `text-white ${field.mono ? 'font-mono text-sm' : ''} break-all`,
+          textContent: field.value
+        });
+        valueContainer.appendChild(value);
+      }
+
+      row.appendChild(label);
+      row.appendChild(valueContainer);
+      grid.appendChild(row);
+    });
+
+    section.appendChild(grid);
+    return section;
+  }
+
+  private createRawDataSection(threat: ThreatIndicator): HTMLElement {
+    const section = DOMBuilder.createElement('div', {
+      className: 'border-t border-gray-700 pt-6'
+    });
+
+    const header = DOMBuilder.createElement('button', {
+      id: 'toggle-raw-data',
+      className: 'w-full flex items-center justify-between text-left hover:bg-gray-700/30 p-3 rounded-lg transition-colors'
+    });
+
+    const headerTitle = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-2'
+    });
+    headerTitle.appendChild(DOMBuilder.createIcon('code', 'w-4 h-4'));
+    headerTitle.appendChild(DOMBuilder.createElement('h3', {
+      className: 'text-lg font-semibold text-white',
+      textContent: 'Raw JSON Data'
+    }));
+
+    const chevron = DOMBuilder.createIcon('chevron-down', 'w-5 h-5 text-gray-400 transition-transform');
+
+    header.appendChild(headerTitle);
+    header.appendChild(chevron);
+
+    const content = DOMBuilder.createElement('div', {
+      id: 'raw-data-content',
+      className: 'hidden mt-3'
+    });
+
+    const pre = DOMBuilder.createElement('pre', {
+      className: 'bg-gray-900 rounded-lg p-4 overflow-x-auto text-xs text-green-400 font-mono'
+    });
+    pre.textContent = JSON.stringify(threat, null, 2);
+    content.appendChild(pre);
+
+    section.appendChild(header);
+    section.appendChild(content);
+
+    // Toggle functionality
+    header.addEventListener('click', () => {
+      content.classList.toggle('hidden');
+      chevron.classList.toggle('rotate-180');
+    });
+
+    return section;
+  }
+
+  private closeThreatDetailsModal(): void {
+    const modal = document.getElementById('threat-details-modal');
+    if (modal) {
+      modal.remove();
+    }
   }
 
   // Enhanced cleanup with proper component lifecycle management
