@@ -87,12 +87,12 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     const titleText = DOMBuilder.createElement('div');
     const title = DOMBuilder.createElement('h2', {
       className: 'text-lg font-semibold text-white',
-      textContent: 'Geographic Threat Distribution'
+      textContent: 'Threat Heatmap'
     });
     const subtitle = DOMBuilder.createElement('p', {
       id: 'heatmap-subtitle',
       className: 'text-sm text-gray-400 mt-1',
-      textContent: `${this.state.totalPoints} locations`
+      textContent: this.state.isLoading ? 'Loading...' : `${this.state.totalPoints} locations`
     });
     titleText.appendChild(title);
     titleText.appendChild(subtitle);
@@ -274,168 +274,180 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       return;
     }
 
-    // Log IOC type distribution
-    const iocTypeCounts = threats.reduce((acc, t) => {
-      acc[t.ioc_type] = (acc[t.ioc_type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    console.log('[HeatmapWidget] IOC type distribution:', iocTypeCounts);
+    // Set loading state
+    this.setState({ isLoading: true });
+    this.updateStats(0, 0); // This will show "Loading..." in the subtitle
 
-    // Filter both IP and domain threats (Shodan can resolve domains to IPs)
-    const ipThreats = threats.filter(t =>
-      t.ioc_type === 'ipv4' ||
-      t.ioc_type === 'IPv4' ||
-      t.ioc_type === 'ipv4-addr' ||
-      t.ioc_type === 'ipv6-addr'
-    );
+    try {
+      // Log IOC type distribution
+      const iocTypeCounts = threats.reduce((acc, t) => {
+        acc[t.ioc_type] = (acc[t.ioc_type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      console.log('[HeatmapWidget] IOC type distribution:', iocTypeCounts);
 
-    const domainThreats = threats.filter(t =>
-      t.ioc_type === 'domain' ||
-      t.ioc_type === 'hostname'
-    );
+      // Filter both IP and domain threats (Shodan can resolve domains to IPs)
+      const ipThreats = threats.filter(t =>
+        t.ioc_type === 'ipv4' ||
+        t.ioc_type === 'IPv4' ||
+        t.ioc_type === 'ipv4-addr' ||
+        t.ioc_type === 'ipv6-addr'
+      );
 
-    console.log(`[HeatmapWidget] Processing ${ipThreats.length} IP threats + ${domainThreats.length} domain threats (via Shodan)`);
+      const domainThreats = threats.filter(t =>
+        t.ioc_type === 'domain' ||
+        t.ioc_type === 'hostname'
+      );
 
-    if (ipThreats.length === 0 && domainThreats.length === 0) {
-      this.heatLayer.setLatLngs([]);
-      this.updateStats(0, 0);
-      return;
-    }
+      console.log(`[HeatmapWidget] Processing ${ipThreats.length} IP threats + ${domainThreats.length} domain threats (via Shodan)`);
 
-    // Build heatmap points from both IPs and domains
-    const heatmapPoints: [number, number, number][] = [];
-    let totalEnriched = 0;
-
-    // Process direct IP threats
-    if (ipThreats.length > 0) {
-      const uniqueIps = [...new Set(ipThreats.map(t => t.ioc_value).filter(Boolean))];
-      console.log(`[HeatmapWidget] Enriching ${uniqueIps.length} unique IPs...`);
-
-      const ipEnrichedData = await geoCache.batchEnrich(uniqueIps, 10);
-      totalEnriched += ipEnrichedData.size;
-
-      ipThreats.forEach(threat => {
-        const enriched = ipEnrichedData.get(threat.ioc_value);
-        if (enriched && enriched.geolocation) {
-          const { latitude, longitude } = enriched.geolocation;
-          const intensity = threat.confidence / 100;
-          heatmapPoints.push([latitude, longitude, intensity]);
-        }
-      });
-    }
-
-    // Process domain threats (extract IPs from Shodan data)
-    if (domainThreats.length > 0) {
-      const uniqueDomains = [...new Set(domainThreats.map(t => t.ioc_value).filter(Boolean))];
-      // Limit domains to avoid too many API calls (take top 20 by confidence)
-      const topDomains = domainThreats
-        .sort((a, b) => b.confidence - a.confidence)
-        .slice(0, 20)
-        .map(t => t.ioc_value)
-        .filter(Boolean);
-
-      console.log(`[HeatmapWidget] Enriching ${topDomains.length} domains via Shodan (out of ${uniqueDomains.length} total)...`);
-
-      const domainEnrichedData = await geoCache.batchEnrichDomains(topDomains, 5);
-      totalEnriched += domainEnrichedData.size;
-
-      // Log first enriched domain for debugging
-      if (domainEnrichedData.size > 0) {
-        const firstEntry = Array.from(domainEnrichedData.entries())[0];
-        console.log('[HeatmapWidget] Sample enriched domain data:', {
-          domain: firstEntry[0],
-          hasGeolocation: !!firstEntry[1].geolocation,
-          hasShodan: !!firstEntry[1].shodan,
-          shodanIp: firstEntry[1].shodan?.ip,
-          geolocationData: firstEntry[1].geolocation
-        });
+      if (ipThreats.length === 0 && domainThreats.length === 0) {
+        this.heatLayer.setLatLngs([]);
+        this.setState({ isLoading: false });
+        this.updateStats(0, 0);
+        return;
       }
 
-      // Extract unique IPs from Shodan data for secondary enrichment
-      const shodanIpsToEnrich = new Set<string>();
-      const domainToIpMap = new Map<string, string>();
+      // Build heatmap points from both IPs and domains
+      const heatmapPoints: [number, number, number][] = [];
+      let totalEnriched = 0;
 
-      domainThreats.forEach(threat => {
-        const enriched = domainEnrichedData.get(threat.ioc_value);
-        if (enriched) {
-          // Check if we have geolocation data directly
-          if (enriched.geolocation && enriched.geolocation.latitude && enriched.geolocation.longitude) {
+      // Process direct IP threats
+      if (ipThreats.length > 0) {
+        const uniqueIps = [...new Set(ipThreats.map(t => t.ioc_value).filter(Boolean))];
+        console.log(`[HeatmapWidget] Enriching ${uniqueIps.length} unique IPs...`);
+
+        const ipEnrichedData = await geoCache.batchEnrich(uniqueIps, 10);
+        totalEnriched += ipEnrichedData.size;
+
+        ipThreats.forEach(threat => {
+          const enriched = ipEnrichedData.get(threat.ioc_value);
+          if (enriched && enriched.geolocation) {
             const { latitude, longitude } = enriched.geolocation;
             const intensity = threat.confidence / 100;
             heatmapPoints.push([latitude, longitude, intensity]);
           }
-          // Extract Shodan IPs for secondary enrichment
-          else if (enriched.shodan && enriched.shodan.ip) {
-            shodanIpsToEnrich.add(enriched.shodan.ip);
-            domainToIpMap.set(threat.ioc_value, enriched.shodan.ip);
-          }
+        });
+      }
+
+      // Process domain threats (extract IPs from Shodan data)
+      if (domainThreats.length > 0) {
+        const uniqueDomains = [...new Set(domainThreats.map(t => t.ioc_value).filter(Boolean))];
+        // Limit domains to avoid too many API calls (take top 20 by confidence)
+        const topDomains = domainThreats
+          .sort((a, b) => b.confidence - a.confidence)
+          .slice(0, 20)
+          .map(t => t.ioc_value)
+          .filter(Boolean);
+
+        console.log(`[HeatmapWidget] Enriching ${topDomains.length} domains via Shodan (out of ${uniqueDomains.length} total)...`);
+
+        const domainEnrichedData = await geoCache.batchEnrichDomains(topDomains, 5);
+        totalEnriched += domainEnrichedData.size;
+
+        // Log first enriched domain for debugging
+        if (domainEnrichedData.size > 0) {
+          const firstEntry = Array.from(domainEnrichedData.entries())[0];
+          console.log('[HeatmapWidget] Sample enriched domain data:', {
+            domain: firstEntry[0],
+            hasGeolocation: !!firstEntry[1].geolocation,
+            hasShodan: !!firstEntry[1].shodan,
+            shodanIp: firstEntry[1].shodan?.ip,
+            geolocationData: firstEntry[1].geolocation
+          });
         }
-      });
 
-      // Perform secondary enrichment on Shodan IPs
-      if (shodanIpsToEnrich.size > 0) {
-        console.log(`[HeatmapWidget] Secondary enrichment: ${shodanIpsToEnrich.size} unique IPs from Shodan`);
-        const shodanIpEnrichedData = await geoCache.batchEnrich(Array.from(shodanIpsToEnrich), 10);
-        totalEnriched += shodanIpEnrichedData.size;
+        // Extract unique IPs from Shodan data for secondary enrichment
+        const shodanIpsToEnrich = new Set<string>();
+        const domainToIpMap = new Map<string, string>();
 
-        // Map geolocated IPs back to domains
         domainThreats.forEach(threat => {
-          const shodanIp = domainToIpMap.get(threat.ioc_value);
-          if (shodanIp) {
-            const ipEnriched = shodanIpEnrichedData.get(shodanIp);
-            if (ipEnriched && ipEnriched.geolocation) {
-              const { latitude, longitude } = ipEnriched.geolocation;
+          const enriched = domainEnrichedData.get(threat.ioc_value);
+          if (enriched) {
+            // Check if we have geolocation data directly
+            if (enriched.geolocation && enriched.geolocation.latitude && enriched.geolocation.longitude) {
+              const { latitude, longitude } = enriched.geolocation;
               const intensity = threat.confidence / 100;
               heatmapPoints.push([latitude, longitude, intensity]);
             }
+            // Extract Shodan IPs for secondary enrichment
+            else if (enriched.shodan && enriched.shodan.ip) {
+              shodanIpsToEnrich.add(enriched.shodan.ip);
+              domainToIpMap.set(threat.ioc_value, enriched.shodan.ip);
+            }
           }
         });
+
+        // Perform secondary enrichment on Shodan IPs
+        if (shodanIpsToEnrich.size > 0) {
+          console.log(`[HeatmapWidget] Secondary enrichment: ${shodanIpsToEnrich.size} unique IPs from Shodan`);
+          const shodanIpEnrichedData = await geoCache.batchEnrich(Array.from(shodanIpsToEnrich), 10);
+          totalEnriched += shodanIpEnrichedData.size;
+
+          // Map geolocated IPs back to domains
+          domainThreats.forEach(threat => {
+            const shodanIp = domainToIpMap.get(threat.ioc_value);
+            if (shodanIp) {
+              const ipEnriched = shodanIpEnrichedData.get(shodanIp);
+              if (ipEnriched && ipEnriched.geolocation) {
+                const { latitude, longitude } = ipEnriched.geolocation;
+                const intensity = threat.confidence / 100;
+                heatmapPoints.push([latitude, longitude, intensity]);
+              }
+            }
+          });
+        }
       }
-    }
 
-    console.log(`[HeatmapWidget] Rendering ${heatmapPoints.length} heatmap points (${totalEnriched} total enriched)`);
+      console.log(`[HeatmapWidget] Rendering ${heatmapPoints.length} heatmap points (${totalEnriched} total enriched)`);
 
-    // Log sample points for debugging
-    if (heatmapPoints.length > 0) {
-      console.log('[HeatmapWidget] Sample heatmap points:', heatmapPoints.slice(0, 3));
-    }
+      // Log sample points for debugging
+      if (heatmapPoints.length > 0) {
+        console.log('[HeatmapWidget] Sample heatmap points:', heatmapPoints.slice(0, 3));
+      }
 
-    // Update heatmap layer
-    if (this.heatLayer) {
-      this.heatLayer.setLatLngs(heatmapPoints);
+      // Update heatmap layer
+      if (this.heatLayer) {
+        this.heatLayer.setLatLngs(heatmapPoints);
 
-      // Force layer to redraw
-      this.heatLayer.redraw();
+        // Force layer to redraw
+        this.heatLayer.redraw();
 
-      // Bring heatmap to front
-      if (this.map) {
-        // Remove and re-add to ensure it's on top
-        this.heatLayer.addTo(this.map);
+        // Bring heatmap to front
+        if (this.map) {
+          // Remove and re-add to ensure it's on top
+          this.heatLayer.addTo(this.map);
 
-        // Force map to redraw
-        this.map.invalidateSize();
+          // Force map to redraw
+          this.map.invalidateSize();
 
-        // If we have points, fit the map bounds to show them
-        if (heatmapPoints.length > 0) {
-          const bounds = L.latLngBounds(heatmapPoints.map(p => [p[0], p[1]]));
-          this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 5 });
+          // If we have points, fit the map bounds to show them
+          if (heatmapPoints.length > 0) {
+            const bounds = L.latLngBounds(heatmapPoints.map(p => [p[0], p[1]]));
+            this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 5 });
+          }
+
+          // Force another redraw after bounds change
+          setTimeout(() => {
+            if (this.heatLayer && this.heatLayer.redraw) {
+              this.heatLayer.redraw();
+            }
+          }, 100);
         }
 
-        // Force another redraw after bounds change
-        setTimeout(() => {
-          if (this.heatLayer && this.heatLayer.redraw) {
-            this.heatLayer.redraw();
-          }
-        }, 100);
+        console.log('[HeatmapWidget] Heatmap layer updated successfully');
+      } else {
+        console.warn('[HeatmapWidget] Heatmap layer not available for update');
       }
 
-      console.log('[HeatmapWidget] Heatmap layer updated successfully');
-    } else {
-      console.warn('[HeatmapWidget] Heatmap layer not available for update');
+      // Update stats
+      this.setState({ isLoading: false });
+      this.updateStats(heatmapPoints.length, totalEnriched);
+    } catch (error) {
+      console.error('[HeatmapWidget] Error updating heatmap:', error);
+      this.setState({ isLoading: false, error: 'Failed to load heatmap data' });
+      this.updateStats(0, 0);
     }
-
-    // Update stats
-    this.updateStats(heatmapPoints.length, totalEnriched);
   }
 
   private updateLoadingState(isLoading: boolean): void {
@@ -459,7 +471,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     // Update subtitle in header
     const subtitle = this.querySelector('#heatmap-subtitle');
     if (subtitle) {
-      subtitle.textContent = `${totalPoints} locations`;
+      subtitle.textContent = this.state.isLoading ? 'Loading...' : `${totalPoints} locations`;
     }
 
     // Update collapsed view stats
@@ -506,7 +518,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     const titleContainer = DOMBuilder.createElement('div');
     titleContainer.appendChild(DOMBuilder.createElement('h2', {
       className: 'text-xl font-bold text-white',
-      textContent: 'Geographic Threat Distribution'
+      textContent: 'Threat Heatmap'
     }));
     titleContainer.appendChild(DOMBuilder.createElement('p', {
       className: 'text-sm text-gray-400 mt-1',

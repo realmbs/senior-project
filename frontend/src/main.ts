@@ -4,7 +4,8 @@ import { Component } from './lib/component.js';
 import { MetricsWidget } from './components/metrics-widget.js';
 import { ThreatList } from './components/threat-list.js';
 import type { ThreatIndicator } from './components/threat-card.js';
-import { enrichIndicator, detectIocType, type EnrichmentResponse } from './lib/api.js';
+import { enrichIndicator, detectIocType, collectThreats, type EnrichmentResponse } from './lib/api.js';
+import { addCollectionMetric } from './lib/analytics-utils.js';
 import { HeatmapWidget } from './components/heatmap-widget.js';
 import { VisualAnalysisTriggerWidget } from './components/visual-analysis-trigger-widget.js';
 import { VisualAnalysisModal } from './components/visual-analysis-modal.js';
@@ -199,13 +200,13 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const metricsGrid = this.createMetricsGrid();
     main.appendChild(metricsGrid);
 
-    // Heatmap section
-    const heatmapSection = this.createHeatmapSection();
-    main.appendChild(heatmapSection);
-
     // Content grid
     const contentGrid = this.createContentGrid();
     main.appendChild(contentGrid);
+
+    // Heatmap section (moved to bottom)
+    const heatmapSection = this.createHeatmapSection();
+    main.appendChild(heatmapSection);
 
     return main;
   }
@@ -213,7 +214,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   private createHeatmapSection(): HTMLElement {
     // Two-column grid container for heatmap and analytics trigger
     const gridContainer = DOMBuilder.createElement('div', {
-      className: 'grid grid-cols-1 md:grid-cols-2 gap-6 mb-8'
+      className: 'grid grid-cols-1 md:grid-cols-2 gap-6 mt-8'
     });
 
     // Heatmap widget container (left)
@@ -1374,18 +1375,49 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.setCollectionButtonLoading(collectBtn, true);
 
     try {
-      const response = await this.apiCall('/collect', 'POST', {});
+      // Use the proper API client with correct parameters
+      const response = await collectThreats(['otx', 'abuse_ch'], 20, 'manual');
 
-      if (response.ok) {
-        this.showNotification('Collection started successfully', 'success');
-        // Refresh data after a short delay
-        setTimeout(() => this.loadDashboardData(), 3000);
+      // Collection started successfully (may still be processing in background)
+      this.showNotification('Collection started - processing in background', 'success');
+
+      // Log collection metrics for analytics
+      addCollectionMetric({
+        timestamp: new Date().toISOString(),
+        source: 'manual',
+        count: response.indicators_stored || 0,
+        status: 'success'
+      });
+
+      // Refresh data after delay to allow background processing
+      setTimeout(() => this.loadDashboardData(), 5000);
+    } catch (error: any) {
+      console.error('Collection request failed:', error);
+
+      // Check if it's a timeout error (expected behavior)
+      if (error.message?.includes('timeout') || error.name === 'TimeoutError') {
+        this.showNotification('Collection started - may take 30-60s to complete', 'warning');
+
+        // Log as warning since collection is likely processing
+        addCollectionMetric({
+          timestamp: new Date().toISOString(),
+          source: 'manual',
+          count: 0,
+          status: 'warning'
+        });
+
+        // Still refresh after delay in case it completed
+        setTimeout(() => this.loadDashboardData(), 10000);
       } else {
-        throw new Error(`Collection failed: ${response.status}`);
+        this.showNotification('Collection failed - please try again', 'error');
+
+        addCollectionMetric({
+          timestamp: new Date().toISOString(),
+          source: 'manual',
+          count: 0,
+          status: 'error'
+        });
       }
-    } catch (error) {
-      console.error('Collection failed:', error);
-      this.showNotification('Collection failed', 'error');
     } finally {
       // Restore original content
       DOMBuilder.clearChildren(collectBtn);
