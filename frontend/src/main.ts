@@ -831,18 +831,18 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const enrichContent = this.querySelector('#enrich-tab-content');
 
     if (tabName === 'ioc-lookup') {
-      // Activate IOC Lookup tab
+      // Activate IOC Lookup tab (blue)
       iocTab?.classList.add('bg-blue-600', 'text-white');
       iocTab?.classList.remove('text-gray-400', 'hover:text-white', 'hover:bg-gray-700/50');
 
-      enrichTab?.classList.remove('bg-blue-600', 'text-white');
+      enrichTab?.classList.remove('bg-purple-600', 'text-white');
       enrichTab?.classList.add('text-gray-400', 'hover:text-white', 'hover:bg-gray-700/50');
 
       iocContent?.classList.remove('hidden');
       enrichContent?.classList.add('hidden');
     } else {
-      // Activate Enrich tab
-      enrichTab?.classList.add('bg-blue-600', 'text-white');
+      // Activate Enrich tab (purple)
+      enrichTab?.classList.add('bg-purple-600', 'text-white');
       enrichTab?.classList.remove('text-gray-400', 'hover:text-white', 'hover:bg-gray-700/50');
 
       iocTab?.classList.remove('bg-blue-600', 'text-white');
