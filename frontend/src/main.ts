@@ -5,6 +5,7 @@ import { MetricsWidget } from './components/metrics-widget.js';
 import { ThreatList } from './components/threat-list.js';
 import type { ThreatIndicator } from './components/threat-card.js';
 import { enrichIndicator, detectIocType, type EnrichmentResponse } from './lib/api.js';
+import { HeatmapWidget } from './components/heatmap-widget.js';
 
 // API Configuration
 const API_CONFIG = {
@@ -42,6 +43,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   // Component instances
   private metricsWidgets: Map<string, MetricsWidget> = new Map();
   private threatList: ThreatList | null = null;
+  private heatmapWidget: HeatmapWidget | null = null;
 
   // Auto-refresh interval
   private refreshInterval: number | null = null;
@@ -193,11 +195,24 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const metricsGrid = this.createMetricsGrid();
     main.appendChild(metricsGrid);
 
+    // Heatmap section
+    const heatmapSection = this.createHeatmapSection();
+    main.appendChild(heatmapSection);
+
     // Content grid
     const contentGrid = this.createContentGrid();
     main.appendChild(contentGrid);
 
     return main;
+  }
+
+  private createHeatmapSection(): HTMLElement {
+    const section = DOMBuilder.createElement('div', {
+      id: 'heatmap-section',
+      className: 'mb-8'
+    });
+
+    return section;
   }
 
   private createMetricsGrid(): HTMLElement {
@@ -582,6 +597,21 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       }
     });
 
+    // Initialize heatmap widget
+    const heatmapContainer = this.querySelector('#heatmap-section');
+    if (heatmapContainer) {
+      try {
+        console.log('✅ Creating heatmap widget');
+        this.heatmapWidget = new HeatmapWidget(heatmapContainer);
+      } catch (error) {
+        console.error('❌ Failed to create heatmap widget:', error);
+        // Hide the heatmap section if it fails to load
+        heatmapContainer.style.display = 'none';
+      }
+    } else {
+      console.error('❌ Heatmap container not found: #heatmap-section');
+    }
+
     // Initialize threat list
     const threatsContainer = this.querySelector('#threats-list');
     if (threatsContainer) {
@@ -591,7 +621,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       console.error('❌ Threats container not found: #threats-list');
     }
 
-    console.log(`✅ Components initialized: ${this.metricsWidgets.size} widgets, threat list: ${this.threatList ? 'yes' : 'no'}`);
+    console.log(`✅ Components initialized: ${this.metricsWidgets.size} widgets, heatmap: ${this.heatmapWidget ? 'yes' : 'no'}, threat list: ${this.threatList ? 'yes' : 'no'}`);
   }
 
   private handleThreatClick(ioc: string): void {
@@ -755,7 +785,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   }
 
   private updateMetricsDisplay(): void {
-    const { metricsData } = this.state;
+    const { metricsData, recentThreats } = this.state;
 
     // Update metrics widgets using component methods
     this.metricsWidgets.get('total-threats')?.updateValue(metricsData.totalThreats);
@@ -763,6 +793,11 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.metricsWidgets.get('recent-activity')?.updateValue(metricsData.recentActivity);
     // Count threat feeds dynamically + 2 enrichment sources (Shodan, IP Geolocation)
     this.metricsWidgets.get('data-sources')?.updateValue(metricsData.topSources.length + 2);
+
+    // Update heatmap with latest threats
+    if (this.heatmapWidget) {
+      this.heatmapWidget.update(recentThreats);
+    }
   }
 
   private updateThreatsDisplay(): void {
