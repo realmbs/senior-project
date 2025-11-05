@@ -17,12 +17,14 @@ interface HeatmapWidgetState {
   error: string | null;
   totalPoints: number;
   enrichedCount: number;
+  isModalOpen: boolean;
 }
 
 export class HeatmapWidget extends Component<HeatmapWidgetState> {
   private map: any = null;
   private heatLayer: any = null;
   private mapContainer: HTMLElement | null = null;
+  private modalOverlay: HTMLElement | null = null;
 
   constructor(element: HTMLElement) {
     super(element, {
@@ -30,7 +32,8 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       isLoading: false,
       error: null,
       totalPoints: 0,
-      enrichedCount: 0
+      enrichedCount: 0,
+      isModalOpen: false
     });
 
     try {
@@ -49,39 +52,28 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       className: 'mb-8'
     });
 
-    // Card wrapper
-    const card = DOMBuilder.createElement('div', {
-      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50'
+    // Card wrapper - now clickable
+    const card = DOMBuilder.createElement('button', {
+      id: 'heatmap-toggle-btn',
+      className: 'w-full bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 hover:border-blue-500/50 transition-colors cursor-pointer text-left'
     });
 
     // Header
     const header = this.createHeader();
     card.appendChild(header);
 
-    // Map container
-    this.mapContainer = DOMBuilder.createElement('div', {
-      id: 'heatmap-container',
-      className: 'p-6'
-    });
-
-    const mapWrapper = DOMBuilder.createElement('div', {
-      className: 'relative rounded-lg overflow-hidden border border-gray-700/30 h-[400px] md:h-[500px] lg:h-[600px]'
-    });
-
-    this.mapContainer.appendChild(mapWrapper);
-    card.appendChild(this.mapContainer);
-
     container.appendChild(card);
     this.element.appendChild(container);
 
-    // Initialize map after DOM is ready
-    setTimeout(() => this.initializeMap(mapWrapper), 0);
+    // Add click handler to open modal
+    this.addEventListener(card, 'click', () => this.openModal());
+
     this.refreshIcons();
   }
 
   private createHeader(): HTMLElement {
     const header = DOMBuilder.createElement('div', {
-      className: 'p-6 border-b border-gray-700/50 flex items-center justify-between'
+      className: 'p-6 flex items-center justify-between'
     });
 
     // Title section
@@ -99,7 +91,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     });
     const subtitle = DOMBuilder.createElement('p', {
       className: 'text-sm text-gray-400 mt-1',
-      textContent: 'IP-based threat heatmap with confidence-weighted intensity'
+      textContent: 'Click to view interactive heatmap'
     });
     titleText.appendChild(title);
     titleText.appendChild(subtitle);
@@ -450,18 +442,202 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     if (loadingIndicator) {
       loadingIndicator.style.display = isLoading ? 'flex' : 'none';
     }
+
+    // Update modal loading state if modal is open
+    if (this.state.isModalOpen) {
+      const modalLoadingIndicator = document.getElementById('modal-heatmap-loading');
+      if (modalLoadingIndicator) {
+        modalLoadingIndicator.style.display = isLoading ? 'flex' : 'none';
+      }
+    }
   }
 
   private updateStats(totalPoints: number, enrichedCount: number): void {
     this.setState({ totalPoints, enrichedCount });
 
+    // Update collapsed view stats
     const pointsText = this.querySelector('#heatmap-points-count');
     if (pointsText) {
       pointsText.textContent = `${totalPoints} locations`;
     }
+
+    // Update modal stats if modal is open
+    if (this.state.isModalOpen) {
+      const modalPointsText = document.getElementById('modal-heatmap-points-count');
+      if (modalPointsText) {
+        modalPointsText.textContent = `${totalPoints} locations`;
+      }
+    }
+  }
+
+  private openModal(): void {
+    if (this.state.isModalOpen) return;
+
+    this.setState({ isModalOpen: true });
+
+    // Create modal overlay
+    this.modalOverlay = DOMBuilder.createElement('div', {
+      id: 'heatmap-modal',
+      className: 'fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4'
+    });
+
+    // Create modal container
+    const modal = DOMBuilder.createElement('div', {
+      className: 'bg-gray-800 rounded-xl border border-gray-700 w-full max-w-7xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col'
+    });
+
+    // Modal header
+    const modalHeader = DOMBuilder.createElement('div', {
+      className: 'bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between'
+    });
+
+    const headerTitle = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+    headerTitle.appendChild(DOMBuilder.createIcon('map', 'w-6 h-6 text-blue-400'));
+
+    const titleContainer = DOMBuilder.createElement('div');
+    titleContainer.appendChild(DOMBuilder.createElement('h2', {
+      className: 'text-xl font-bold text-white',
+      textContent: 'Geographic Threat Distribution'
+    }));
+    titleContainer.appendChild(DOMBuilder.createElement('p', {
+      className: 'text-sm text-gray-400 mt-1',
+      textContent: 'IP-based threat heatmap with confidence-weighted intensity'
+    }));
+    headerTitle.appendChild(titleContainer);
+
+    // Stats and legend section
+    const headerStats = DOMBuilder.createElement('div', {
+      className: 'flex items-center gap-6'
+    });
+
+    // Stats display
+    const statsDisplay = DOMBuilder.createElement('div', {
+      id: 'modal-heatmap-stats',
+      className: 'flex items-center gap-4 text-sm'
+    });
+
+    // Loading indicator
+    const loadingIndicator = DOMBuilder.createElement('div', {
+      id: 'modal-heatmap-loading',
+      className: 'flex items-center gap-2 text-sm text-gray-400',
+      style: { display: this.state.isLoading ? 'flex' : 'none' }
+    });
+    const spinner = DOMBuilder.createElement('div', {
+      className: 'animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent'
+    });
+    loadingIndicator.appendChild(spinner);
+    loadingIndicator.appendChild(DOMBuilder.createText('Loading...'));
+
+    const pointsCount = DOMBuilder.createElement('div', {
+      className: 'flex items-center gap-2'
+    });
+    const pointsIcon = DOMBuilder.createIcon('map-pin', 'w-4 h-4 text-blue-400');
+    const pointsText = DOMBuilder.createElement('span', {
+      id: 'modal-heatmap-points-count',
+      className: 'text-gray-300',
+      textContent: `${this.state.totalPoints} locations`
+    });
+    pointsCount.appendChild(pointsIcon);
+    pointsCount.appendChild(pointsText);
+
+    statsDisplay.appendChild(loadingIndicator);
+    statsDisplay.appendChild(pointsCount);
+    headerStats.appendChild(statsDisplay);
+
+    // Legend
+    const legend = this.createLegend();
+    headerStats.appendChild(legend);
+
+    const closeButton = DOMBuilder.createElement('button', {
+      id: 'close-heatmap-modal-btn',
+      className: 'p-2 hover:bg-gray-700 rounded-lg transition-colors ml-4'
+    });
+    closeButton.appendChild(DOMBuilder.createIcon('x', 'w-5 h-5 text-gray-400'));
+
+    modalHeader.appendChild(headerTitle);
+    modalHeader.appendChild(headerStats);
+    modalHeader.appendChild(closeButton);
+
+    // Modal content (map container)
+    const modalContent = DOMBuilder.createElement('div', {
+      className: 'flex-1 p-6 overflow-hidden'
+    });
+
+    const mapWrapper = DOMBuilder.createElement('div', {
+      id: 'modal-map-wrapper',
+      className: 'relative rounded-lg overflow-hidden border border-gray-700/30 h-full min-h-[600px]'
+    });
+
+    modalContent.appendChild(mapWrapper);
+
+    // Assemble modal
+    modal.appendChild(modalHeader);
+    modal.appendChild(modalContent);
+    this.modalOverlay.appendChild(modal);
+
+    // Add to body
+    document.body.appendChild(this.modalOverlay);
+
+    // Refresh icons
+    this.refreshIcons();
+
+    // Initialize map after DOM is ready
+    setTimeout(() => {
+      this.initializeMap(mapWrapper);
+      // Update with current threats if available
+      if (this.state.threats.length > 0) {
+        this.updateHeatmap(this.state.threats);
+      }
+    }, 100);
+
+    // Close on button click
+    closeButton.addEventListener('click', () => this.closeModal());
+
+    // Close on overlay click (not modal content)
+    this.modalOverlay.addEventListener('click', (e) => {
+      if (e.target === this.modalOverlay) {
+        this.closeModal();
+      }
+    });
+
+    // Close on Escape key
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+  }
+
+  private closeModal(): void {
+    if (!this.state.isModalOpen) return;
+
+    this.setState({ isModalOpen: false });
+
+    // Clean up map
+    if (this.map) {
+      this.map.remove();
+      this.map = null;
+    }
+    this.heatLayer = null;
+
+    // Remove modal from DOM
+    if (this.modalOverlay) {
+      this.modalOverlay.remove();
+      this.modalOverlay = null;
+    }
   }
 
   destroy(): void {
+    // Close modal if open
+    if (this.state.isModalOpen) {
+      this.closeModal();
+    }
+
+    // Clean up map
     if (this.map) {
       this.map.remove();
       this.map = null;
