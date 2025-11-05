@@ -107,6 +107,9 @@ export class ThreatCard extends Component<ThreatCardState> {
 
     // Refresh icons
     this.refreshIcons();
+
+    // Re-attach event listeners after render
+    this.setupEventListeners();
   }
 
   update(newThreat: ThreatIndicator): void {
