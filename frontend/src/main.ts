@@ -462,7 +462,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     const results = DOMBuilder.createElement('div', {
       id: 'search-results',
-      className: 'mt-6 space-y-4'
+      className: 'mt-6 space-y-4 max-h-96 overflow-y-auto'
     });
 
     content.appendChild(form);
