@@ -317,14 +317,18 @@ def collect_otx_indicators(api_key: str, limit: int = 50) -> List[Dict[str, Any]
     return indicators
 
 
-def collect_abuse_ch_indicators(limit: int = 50) -> List[Dict[str, Any]]:
+def collect_abuse_ch_indicators(api_key: str, limit: int = 50) -> List[Dict[str, Any]]:
     """Collect basic indicators from Abuse.ch URLhaus"""
     indicators = []
     try:
         url = "https://urlhaus-api.abuse.ch/v1/urls/recent/"
-        data = {'limit': min(limit, 100)}
+        headers = {
+            'Auth-Key': api_key,
+            'User-Agent': 'ThreatIntelPlatform/1.0 (AWS Lambda; Python/3.9)'
+        }
+        params = {'limit': min(limit, 1000)}  # URLhaus supports up to 1000
 
-        response = requests.post(url, data=data, timeout=30)
+        response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
 
         result = response.json()
@@ -448,9 +452,17 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             all_indicators.extend(otx_indicators)
             collection_stats['otx'] = len(otx_indicators)
 
-        # Collect from Abuse.ch (temporarily disabled - authentication issue)
-        if 'abuse_ch' in sources:
-            logger.info("Abuse.ch collection temporarily disabled (authentication required)")
+        # Collect from Abuse.ch URLhaus
+        if 'abuse_ch' in sources and api_keys.get('abuse_ch_api_key'):
+            logger.info("Collecting from Abuse.ch URLhaus...")
+            abuse_indicators = collect_abuse_ch_indicators(
+                api_keys['abuse_ch_api_key'],
+                limit
+            )
+            all_indicators.extend(abuse_indicators)
+            collection_stats['abuse_ch'] = len(abuse_indicators)
+        elif 'abuse_ch' in sources:
+            logger.warning("Abuse.ch API key not found in Secrets Manager")
             collection_stats['abuse_ch'] = 0
 
         # Store indicators
