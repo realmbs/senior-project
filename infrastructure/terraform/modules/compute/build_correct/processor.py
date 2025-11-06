@@ -220,11 +220,11 @@ def search_indicators(query: Dict[str, Any]) -> Dict[str, Any]:
             # General scan (limited for MVP)
             # Use FilterExpression instead of ScanFilter for better special character handling
             if 'ioc_value' in query:
-                logger.info(f"Searching for exact IOC value: {query['ioc_value']}")
+                logger.info(f"Searching for IOC value (partial match): {query['ioc_value']}")
                 # Use FilterExpression with boto3.dynamodb.conditions for proper handling
                 from boto3.dynamodb.conditions import Attr
                 response = threat_intel_table.scan(
-                    FilterExpression=Attr('ioc_value').eq(query['ioc_value']),
+                    FilterExpression=Attr('ioc_value').contains(query['ioc_value']),
                     Limit=query.get('limit', 100)  # Higher limit since we're filtering
                 )
                 logger.info(f"Scan returned {len(response.get('Items', []))} items")
