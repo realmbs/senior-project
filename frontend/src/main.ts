@@ -850,9 +850,11 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     // Count active collection sources (otx, abuse_ch, etc.) - not enrichment services
     this.metricsWidgets.get('data-sources')?.updateValue(metricsData.topSources.length);
 
-    // Update heatmap with latest threats
+    // Update heatmap with latest threats (non-blocking - enrichment happens in background)
     if (this.heatmapWidget) {
-      this.heatmapWidget.update(recentThreats);
+      this.heatmapWidget.update(recentThreats).catch(error => {
+        console.error('[Dashboard] Heatmap update failed:', error);
+      });
     }
 
     // Update analytics modal if it's open
