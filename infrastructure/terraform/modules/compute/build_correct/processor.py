@@ -217,23 +217,46 @@ def search_indicators(query: Dict[str, Any]) -> Dict[str, Any]:
             items = response.get('Items', [])
 
         else:
-            # General scan (limited for MVP)
+            # General scan with pagination for comprehensive search
             # Use FilterExpression instead of ScanFilter for better special character handling
             if 'ioc_value' in query:
                 logger.info(f"Searching for IOC value (partial match): {query['ioc_value']}")
                 # Use FilterExpression with boto3.dynamodb.conditions for proper handling
                 from boto3.dynamodb.conditions import Attr
-                response = threat_intel_table.scan(
-                    FilterExpression=Attr('ioc_value').contains(query['ioc_value']),
-                    Limit=query.get('limit', 100)  # Higher limit since we're filtering
-                )
-                logger.info(f"Scan returned {len(response.get('Items', []))} items")
+
+                # Paginate through results to search entire table
+                items = []
+                result_limit = query.get('limit', 100)  # Max results to return
+                scan_params = {
+                    'FilterExpression': Attr('ioc_value').contains(query['ioc_value']),
+                    'Limit': 1000  # Scan 1000 items at a time for performance
+                }
+
+                # Keep scanning until we have enough results or scanned entire table
+                scanned_count = 0
+                max_scans = 50  # Safety limit: max 50,000 items scanned (50 * 1000)
+                scan_iterations = 0
+
+                while len(items) < result_limit and scan_iterations < max_scans:
+                    response = threat_intel_table.scan(**scan_params)
+                    items.extend(response.get('Items', []))
+                    scanned_count += response.get('ScannedCount', 0)
+                    scan_iterations += 1
+
+                    # Check if there are more items to scan
+                    if 'LastEvaluatedKey' not in response:
+                        break
+                    scan_params['ExclusiveStartKey'] = response['LastEvaluatedKey']
+
+                # Trim to requested limit
+                items = items[:result_limit]
+                logger.info(f"Scan complete: {len(items)} items found, {scanned_count} items scanned in {scan_iterations} iterations")
             else:
                 logger.info("Performing unfiltered scan")
                 response = threat_intel_table.scan(
-                    Limit=query.get('limit', 20)
+                    Limit=query.get('limit', 100)
                 )
-            items = response.get('Items', [])
+                items = response.get('Items', [])
 
         # Convert Decimal and DynamoDB sets for JSON serialization
         def convert_decimals(obj):
