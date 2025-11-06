@@ -415,13 +415,26 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
 
       // Process direct IP threats
       if (ipThreats.length > 0) {
-        const uniqueIps = [...new Set(ipThreats.map(t => t.ioc_value).filter(Boolean))];
-        console.log(`[HeatmapWidget] Enriching ${uniqueIps.length} unique IPs...`);
+        // Limit IPs to avoid too many API calls (take top 50 by confidence)
+        const topIps = ipThreats
+          .sort((a, b) => b.confidence - a.confidence)
+          .slice(0, 50)
+          .map(t => t.ioc_value)
+          .filter(Boolean);
+        const uniqueIps = [...new Set(topIps)];
+
+        console.log(`[HeatmapWidget] Enriching ${uniqueIps.length} unique IPs (out of ${ipThreats.length} total)...`);
 
         const ipEnrichedData = await geoCache.batchEnrich(uniqueIps, 10);
         totalEnriched += ipEnrichedData.size;
 
-        ipThreats.forEach(threat => {
+        // Only process the top IP threats that were enriched
+        const topIpThreats = ipThreats
+          .filter(t => uniqueIps.includes(t.ioc_value))
+          .sort((a, b) => b.confidence - a.confidence)
+          .slice(0, 50);
+
+        topIpThreats.forEach(threat => {
           const enriched = ipEnrichedData.get(threat.ioc_value);
           if (enriched && enriched.geolocation) {
             const { latitude, longitude, city, country } = enriched.geolocation;

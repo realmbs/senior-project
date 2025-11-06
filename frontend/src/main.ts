@@ -789,8 +789,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       this.updateApiStatus('connecting');
 
       // Load recent threats (all available)
-      console.log('📡 Making API call to /search?limit=200');
-      const response = await this.apiCall('/search?limit=200');
+      console.log('📡 Making API call to /search?limit=10000');
+      const response = await this.apiCall('/search?limit=10000');
 
       if (response.ok) {
         const data: SearchResponse = await response.json();
@@ -847,8 +847,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.metricsWidgets.get('total-threats')?.updateValue(metricsData.totalThreats);
     this.metricsWidgets.get('high-risk')?.updateValue(metricsData.highRiskThreats);
     this.metricsWidgets.get('recent-activity')?.updateValue(metricsData.recentActivity);
-    // Count threat feeds dynamically + 2 enrichment sources (Shodan, IP Geolocation)
-    this.metricsWidgets.get('data-sources')?.updateValue(metricsData.topSources.length + 2);
+    // Count active collection sources (otx, abuse_ch, etc.) - not enrichment services
+    this.metricsWidgets.get('data-sources')?.updateValue(metricsData.topSources.length);
 
     // Update heatmap with latest threats
     if (this.heatmapWidget) {
