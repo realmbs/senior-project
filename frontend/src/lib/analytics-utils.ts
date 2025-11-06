@@ -275,8 +275,8 @@ export function getCollectionMetrics(): CollectionMetric[] {
 
     const metrics: CollectionMetric[] = JSON.parse(stored);
 
-    // Return last 10 collections, newest first
-    return metrics.slice(-10).reverse();
+    // Return all stored collections, newest first (up to 50 as limited by addCollectionMetric)
+    return metrics.slice().reverse();
   } catch (error) {
     console.error('Failed to load collection metrics:', error);
     return [];
