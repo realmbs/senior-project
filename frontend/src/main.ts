@@ -1288,10 +1288,35 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     DOMBuilder.clearChildren(container);
 
     if (results.length === 0) {
-      container.appendChild(DOMBuilder.createElement('p', {
+      // Empty state with clear button
+      const emptyContainer = DOMBuilder.createElement('div', {
+        className: 'space-y-3'
+      });
+
+      const headerContainer = DOMBuilder.createElement('div', {
+        className: 'flex items-center justify-between'
+      });
+
+      const message = DOMBuilder.createElement('p', {
         className: 'text-gray-400',
         textContent: 'No threats found for this query.'
-      }));
+      });
+
+      const clearButton = DOMBuilder.createElement('button', {
+        id: 'clear-search-btn',
+        className: 'text-xs text-gray-400 hover:text-red-400 transition-colors flex items-center space-x-1'
+      });
+      clearButton.appendChild(DOMBuilder.createIcon('x', 'w-3 h-3'));
+      clearButton.appendChild(DOMBuilder.createElement('span', { textContent: 'Clear' }));
+
+      headerContainer.appendChild(message);
+      headerContainer.appendChild(clearButton);
+      emptyContainer.appendChild(headerContainer);
+      container.appendChild(emptyContainer);
+
+      // Refresh icons and attach clear button event listener
+      this.refreshIcons();
+      this.setupClearSearchListener();
       return;
     }
 
