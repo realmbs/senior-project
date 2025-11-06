@@ -122,7 +122,7 @@ variable "processed_data_bucket_name" {
 variable "lambda_timeout" {
   description = "Lambda function timeout in seconds (max 900 seconds / 15 minutes)"
   type        = number
-  default     = 300
+  default     = 600
 
   validation {
     condition     = var.lambda_timeout >= 1 && var.lambda_timeout <= 900

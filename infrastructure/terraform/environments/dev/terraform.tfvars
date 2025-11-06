@@ -10,8 +10,8 @@ environment  = "dev"
 aws_region   = "us-east-1"
 
 # Lambda Function Configuration
-lambda_timeout         = 300  # 5 minutes
-collector_memory_size  = 256  # Cost-optimized for collection
+lambda_timeout         = 600  # 10 minutes (increased for full OTX + abuse_ch collection)
+collector_memory_size  = 768  # Increased to 768MB for better performance (more memory = faster CPU)
 processor_memory_size  = 512  # Higher memory for data processing
 enrichment_memory_size = 1024 # Highest memory for OSINT tools
 
