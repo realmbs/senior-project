@@ -11,6 +11,17 @@ import { geoCache } from '../lib/geo-cache';
 // Use global Leaflet from CDN
 declare const L: any;
 
+interface MappedIndicator {
+  ioc_value: string;
+  ioc_type: string;
+  confidence: number;
+  source: string;
+  latitude: number;
+  longitude: number;
+  city?: string;
+  country?: string;
+}
+
 interface HeatmapWidgetState {
   threats: ThreatIndicator[];
   isLoading: boolean;
@@ -18,6 +29,7 @@ interface HeatmapWidgetState {
   totalPoints: number;
   enrichedCount: number;
   isModalOpen: boolean;
+  mappedIndicators: MappedIndicator[];
 }
 
 export class HeatmapWidget extends Component<HeatmapWidgetState> {
@@ -32,7 +44,8 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       error: null,
       totalPoints: 0,
       enrichedCount: 0,
-      isModalOpen: false
+      isModalOpen: false,
+      mappedIndicators: []
     });
 
     try {
@@ -151,6 +164,138 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     return legend;
   }
 
+  private createIndicatorsList(): HTMLElement {
+    const container = DOMBuilder.createElement('div', {
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-lg border border-gray-700/50 flex flex-col h-full'
+    });
+
+    // Header
+    const header = DOMBuilder.createElement('div', {
+      className: 'p-4 border-b border-gray-700/50'
+    });
+
+    const headerTitle = DOMBuilder.createElement('div', {
+      className: 'flex items-center gap-2'
+    });
+    headerTitle.appendChild(DOMBuilder.createIcon('map-pin', 'w-5 h-5 text-blue-400'));
+    headerTitle.appendChild(DOMBuilder.createElement('h3', {
+      className: 'font-medium text-white',
+      textContent: 'Mapped Indicators'
+    }));
+    header.appendChild(headerTitle);
+
+    const headerSubtitle = DOMBuilder.createElement('p', {
+      id: 'indicators-count',
+      className: 'text-sm text-gray-400 mt-1',
+      textContent: `${this.state.mappedIndicators.length} indicators with geolocation`
+    });
+    header.appendChild(headerSubtitle);
+
+    container.appendChild(header);
+
+    // Scrollable list
+    const listContainer = DOMBuilder.createElement('div', {
+      id: 'indicators-list-container',
+      className: 'flex-1 overflow-y-auto p-4 space-y-3'
+    });
+
+    if (this.state.mappedIndicators.length === 0) {
+      const emptyState = DOMBuilder.createElement('div', {
+        className: 'text-center text-gray-400 py-8'
+      });
+      emptyState.appendChild(DOMBuilder.createIcon('map-pin-off', 'w-12 h-12 mx-auto mb-2 opacity-50'));
+      emptyState.appendChild(DOMBuilder.createElement('p', {
+        textContent: 'No indicators mapped yet'
+      }));
+      listContainer.appendChild(emptyState);
+    } else {
+      // Sort by confidence (highest first)
+      const sortedIndicators = [...this.state.mappedIndicators].sort((a, b) => b.confidence - a.confidence);
+
+      sortedIndicators.forEach(indicator => {
+        const indicatorCard = this.createIndicatorCard(indicator);
+        listContainer.appendChild(indicatorCard);
+      });
+    }
+
+    container.appendChild(listContainer);
+
+    return container;
+  }
+
+  private createIndicatorCard(indicator: MappedIndicator): HTMLElement {
+    const card = DOMBuilder.createElement('div', {
+      className: 'bg-gray-700/30 rounded-lg border border-gray-700/50 p-3 hover:border-blue-500/50 transition-colors'
+    });
+
+    // IOC Value (main)
+    const iocValue = DOMBuilder.createElement('div', {
+      className: 'font-mono text-sm text-white mb-2 break-all',
+      textContent: indicator.ioc_value
+    });
+    card.appendChild(iocValue);
+
+    // Metadata row
+    const metadataRow = DOMBuilder.createElement('div', {
+      className: 'flex items-center gap-2 text-xs text-gray-400 mb-2'
+    });
+
+    // IOC Type badge
+    const typeBadge = DOMBuilder.createElement('span', {
+      className: 'px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded',
+      textContent: indicator.ioc_type
+    });
+    metadataRow.appendChild(typeBadge);
+
+    // Confidence badge
+    const confidenceColor = indicator.confidence >= 80 ? 'text-red-400 bg-red-500/20' :
+                           indicator.confidence >= 60 ? 'text-orange-400 bg-orange-500/20' :
+                           'text-yellow-400 bg-yellow-500/20';
+    const confidenceBadge = DOMBuilder.createElement('span', {
+      className: `px-2 py-0.5 ${confidenceColor} rounded`,
+      textContent: `${indicator.confidence}% confidence`
+    });
+    metadataRow.appendChild(confidenceBadge);
+
+    card.appendChild(metadataRow);
+
+    // Location info
+    const locationRow = DOMBuilder.createElement('div', {
+      className: 'flex items-start gap-2 text-xs'
+    });
+    locationRow.appendChild(DOMBuilder.createIcon('map-pin', 'w-3 h-3 text-gray-400 mt-0.5'));
+
+    const locationText = DOMBuilder.createElement('div', {
+      className: 'text-gray-400'
+    });
+
+    // City, Country
+    const location = [indicator.city, indicator.country].filter(Boolean).join(', ') || 'Unknown location';
+    locationText.appendChild(DOMBuilder.createElement('div', {
+      textContent: location
+    }));
+
+    // Coordinates
+    const coords = DOMBuilder.createElement('div', {
+      className: 'text-gray-500 font-mono',
+      textContent: `${indicator.latitude.toFixed(4)}, ${indicator.longitude.toFixed(4)}`
+    });
+    locationText.appendChild(coords);
+
+    locationRow.appendChild(locationText);
+    card.appendChild(locationRow);
+
+    // Source
+    const sourceRow = DOMBuilder.createElement('div', {
+      className: 'flex items-center gap-2 text-xs text-gray-500 mt-2'
+    });
+    sourceRow.appendChild(DOMBuilder.createIcon('database', 'w-3 h-3'));
+    sourceRow.appendChild(DOMBuilder.createText(`Source: ${indicator.source}`));
+    card.appendChild(sourceRow);
+
+    return card;
+  }
+
   private initializeMap(container: HTMLElement): void {
     try {
       if (this.map) {
@@ -265,6 +410,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
 
       // Build heatmap points from both IPs and domains
       const heatmapPoints: [number, number, number][] = [];
+      const mappedIndicators: MappedIndicator[] = [];
       let totalEnriched = 0;
 
       // Process direct IP threats
@@ -278,9 +424,21 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
         ipThreats.forEach(threat => {
           const enriched = ipEnrichedData.get(threat.ioc_value);
           if (enriched && enriched.geolocation) {
-            const { latitude, longitude } = enriched.geolocation;
+            const { latitude, longitude, city, country } = enriched.geolocation;
             const intensity = threat.confidence / 100;
             heatmapPoints.push([latitude, longitude, intensity]);
+
+            // Track mapped indicator
+            mappedIndicators.push({
+              ioc_value: threat.ioc_value,
+              ioc_type: threat.ioc_type,
+              confidence: threat.confidence,
+              source: threat.source || 'Unknown',
+              latitude,
+              longitude,
+              city,
+              country
+            });
           }
         });
       }
@@ -321,9 +479,21 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
           if (enriched) {
             // Check if we have geolocation data directly
             if (enriched.geolocation && enriched.geolocation.latitude && enriched.geolocation.longitude) {
-              const { latitude, longitude } = enriched.geolocation;
+              const { latitude, longitude, city, country } = enriched.geolocation;
               const intensity = threat.confidence / 100;
               heatmapPoints.push([latitude, longitude, intensity]);
+
+              // Track mapped indicator
+              mappedIndicators.push({
+                ioc_value: threat.ioc_value,
+                ioc_type: threat.ioc_type,
+                confidence: threat.confidence,
+                source: threat.source || 'Unknown',
+                latitude,
+                longitude,
+                city,
+                country
+              });
             }
             // Extract Shodan IPs for secondary enrichment
             else if (enriched.shodan && enriched.shodan.ip) {
@@ -345,9 +515,21 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
             if (shodanIp) {
               const ipEnriched = shodanIpEnrichedData.get(shodanIp);
               if (ipEnriched && ipEnriched.geolocation) {
-                const { latitude, longitude } = ipEnriched.geolocation;
+                const { latitude, longitude, city, country } = ipEnriched.geolocation;
                 const intensity = threat.confidence / 100;
                 heatmapPoints.push([latitude, longitude, intensity]);
+
+                // Track mapped indicator
+                mappedIndicators.push({
+                  ioc_value: threat.ioc_value,
+                  ioc_type: threat.ioc_type,
+                  confidence: threat.confidence,
+                  source: threat.source || 'Unknown',
+                  latitude,
+                  longitude,
+                  city,
+                  country
+                });
               }
             }
           });
@@ -355,11 +537,15 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       }
 
       console.log(`[HeatmapWidget] Rendering ${heatmapPoints.length} heatmap points (${totalEnriched} total enriched)`);
+      console.log(`[HeatmapWidget] Tracked ${mappedIndicators.length} mapped indicators`);
 
       // Log sample points for debugging
       if (heatmapPoints.length > 0) {
         console.log('[HeatmapWidget] Sample heatmap points:', heatmapPoints.slice(0, 3));
       }
+
+      // Update state with mapped indicators
+      this.setState({ mappedIndicators });
 
       // Update heatmap layer
       if (this.heatLayer) {
@@ -441,7 +627,45 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
       if (modalPointsText) {
         modalPointsText.textContent = `${totalPoints} locations`;
       }
+
+      // Update indicators list
+      this.updateIndicatorsList();
     }
+  }
+
+  private updateIndicatorsList(): void {
+    const indicatorsCount = document.getElementById('indicators-count');
+    if (indicatorsCount) {
+      indicatorsCount.textContent = `${this.state.mappedIndicators.length} indicators with geolocation`;
+    }
+
+    const listContainer = document.getElementById('indicators-list-container');
+    if (!listContainer) return;
+
+    // Clear existing content
+    DOMBuilder.clearChildren(listContainer);
+
+    if (this.state.mappedIndicators.length === 0) {
+      const emptyState = DOMBuilder.createElement('div', {
+        className: 'text-center text-gray-400 py-8'
+      });
+      emptyState.appendChild(DOMBuilder.createIcon('map-pin-off', 'w-12 h-12 mx-auto mb-2 opacity-50'));
+      emptyState.appendChild(DOMBuilder.createElement('p', {
+        textContent: 'No indicators mapped yet'
+      }));
+      listContainer.appendChild(emptyState);
+    } else {
+      // Sort by confidence (highest first)
+      const sortedIndicators = [...this.state.mappedIndicators].sort((a, b) => b.confidence - a.confidence);
+
+      sortedIndicators.forEach(indicator => {
+        const indicatorCard = this.createIndicatorCard(indicator);
+        listContainer.appendChild(indicatorCard);
+      });
+    }
+
+    // Refresh icons after updating list
+    this.refreshIcons();
   }
 
   private openModal(): void {
@@ -534,17 +758,33 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     modalHeader.appendChild(headerStats);
     modalHeader.appendChild(closeButton);
 
-    // Modal content (map container)
+    // Modal content (map + indicators list)
     const modalContent = DOMBuilder.createElement('div', {
-      className: 'flex-1 p-6 overflow-hidden'
+      className: 'flex-1 p-6 overflow-hidden flex flex-col lg:flex-row gap-6'
+    });
+
+    // Map container (left side on desktop, top on mobile)
+    const mapContainer = DOMBuilder.createElement('div', {
+      className: 'flex-1 flex flex-col min-h-[400px] lg:min-h-[600px]'
     });
 
     const mapWrapper = DOMBuilder.createElement('div', {
       id: 'modal-map-wrapper',
-      className: 'relative rounded-lg overflow-hidden border border-gray-700/30 h-full min-h-[600px]'
+      className: 'relative rounded-lg overflow-hidden border border-gray-700/30 flex-1'
     });
 
-    modalContent.appendChild(mapWrapper);
+    mapContainer.appendChild(mapWrapper);
+
+    // Indicators list container (right side on desktop, bottom on mobile)
+    const indicatorsContainer = DOMBuilder.createElement('div', {
+      className: 'w-full lg:w-96 flex flex-col'
+    });
+
+    const indicatorsList = this.createIndicatorsList();
+    indicatorsContainer.appendChild(indicatorsList);
+
+    modalContent.appendChild(mapContainer);
+    modalContent.appendChild(indicatorsContainer);
 
     // Assemble modal
     modal.appendChild(modalHeader);
