@@ -667,10 +667,15 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   }
 
   private handleThreatClick(ioc: string): void {
+    console.log('🔍 Threat clicked, IOC value:', ioc);
     const input = this.querySelector('#ioc-input') as HTMLInputElement;
     if (input) {
       input.value = ioc;
-      this.handleSearch();
+      console.log('✅ Input value set to:', input.value);
+      // Small delay to ensure input is updated before search
+      setTimeout(() => this.handleSearch(), 10);
+    } else {
+      console.error('❌ IOC input element not found');
     }
   }
 
@@ -1184,9 +1189,14 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const resultsContainer = this.querySelector('#search-results');
     const searchBtn = this.querySelector('#search-btn');
 
-    if (!input || !resultsContainer || !searchBtn) return;
+    if (!input || !resultsContainer || !searchBtn) {
+      console.error('❌ Search elements not found:', { input: !!input, resultsContainer: !!resultsContainer, searchBtn: !!searchBtn });
+      return;
+    }
 
     const query = input.value.trim();
+    console.log('🔍 Searching for IOC:', query);
+
     if (!query) {
       this.showNotification('Please enter an IOC to search', 'warning');
       return;
@@ -1196,16 +1206,24 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.setSearchButtonLoading(searchBtn, true);
 
     try {
-      const response = await this.apiCall(`/search?q=${encodeURIComponent(query)}&limit=10`);
+      const encodedQuery = encodeURIComponent(query);
+      const searchUrl = `/search?q=${encodedQuery}&limit=10`;
+      console.log('📡 Search API call:', searchUrl);
+
+      const response = await this.apiCall(searchUrl);
 
       if (response.ok) {
         const data: SearchResponse = await response.json();
+        console.log('✅ Search results:', data.results.results.length, 'threats found');
+        console.log('📊 Results data:', data);
         this.displaySearchResults(data.results.results, resultsContainer);
       } else {
+        const errorText = await response.text();
+        console.error('❌ Search API error:', response.status, errorText);
         throw new Error(`Search failed: ${response.status}`);
       }
     } catch (error) {
-      console.error('Search failed:', error);
+      console.error('❌ Search failed with error:', error);
       this.showNotification('Search failed', 'error');
       this.displaySearchError(resultsContainer);
     } finally {

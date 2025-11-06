@@ -177,6 +177,7 @@ def store_processed_indicator(indicator: Dict[str, Any]) -> bool:
 def search_indicators(query: Dict[str, Any]) -> Dict[str, Any]:
     """Basic indicator search using available DynamoDB indexes"""
     try:
+        logger.info(f"Search query received: {query}")
         items = []
 
         # Search by IOC type
@@ -217,23 +218,20 @@ def search_indicators(query: Dict[str, Any]) -> Dict[str, Any]:
 
         else:
             # General scan (limited for MVP)
-            scan_filter = {}
-
-            # Add filter conditions for ioc_value if provided
+            # Use FilterExpression instead of ScanFilter for better special character handling
             if 'ioc_value' in query:
-                scan_filter['ioc_value'] = {
-                    'AttributeValueList': [query['ioc_value']],
-                    'ComparisonOperator': 'CONTAINS'
-                }
-
-            if scan_filter:
+                logger.info(f"Searching for exact IOC value: {query['ioc_value']}")
+                # Use FilterExpression with boto3.dynamodb.conditions for proper handling
+                from boto3.dynamodb.conditions import Attr
                 response = threat_intel_table.scan(
-                    ScanFilter=scan_filter,
-                    Limit=query.get('limit', 10)
+                    FilterExpression=Attr('ioc_value').eq(query['ioc_value']),
+                    Limit=query.get('limit', 100)  # Higher limit since we're filtering
                 )
+                logger.info(f"Scan returned {len(response.get('Items', []))} items")
             else:
+                logger.info("Performing unfiltered scan")
                 response = threat_intel_table.scan(
-                    Limit=query.get('limit', 10)
+                    Limit=query.get('limit', 20)
                 )
             items = response.get('Items', [])
 
