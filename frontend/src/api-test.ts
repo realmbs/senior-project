@@ -48,8 +48,14 @@ collectBtn.addEventListener('click', async () => {
   updateStatus(collectStatus, collectData, true);
 
   try {
-    const result = await collectThreats(['otx'], 10, 'automated', {
-      ioc_types: ['domain', 'ip'],
+    const sourceSelect = (document.getElementById('collectSource') as HTMLSelectElement).value;
+    const limit = parseInt((document.getElementById('collectLimit') as HTMLInputElement).value) || 10;
+
+    // Determine which sources to collect from
+    const sources = sourceSelect === 'both' ? ['otx', 'abuse_ch'] : [sourceSelect];
+
+    const result = await collectThreats(sources, limit, 'manual', {
+      ioc_types: ['domain', 'ip', 'url', 'hash'],
       confidence: 70
     });
     updateStatus(collectStatus, collectData, false, undefined, result);
