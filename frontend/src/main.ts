@@ -1207,7 +1207,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     try {
       const encodedQuery = encodeURIComponent(query);
-      const searchUrl = `/search?q=${encodedQuery}&limit=10`;
+      const searchUrl = `/search?q=${encodedQuery}&limit=50`;
       console.log('📡 Search API call:', searchUrl);
 
       const response = await this.apiCall(searchUrl);
