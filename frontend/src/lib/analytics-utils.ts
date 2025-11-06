@@ -46,15 +46,21 @@ function getWeekNumber(date: Date): number {
 function formatDateLabel(dateKey: string, period: TimePeriod): string {
   if (period === 'hourly') {
     // "2025-11-05T14" -> "Nov 5, 2pm"
-    const date = new Date(dateKey + ':00:00');
-    const hour = date.getHours();
+    // Parse as UTC to match how buckets were generated
+    const date = new Date(dateKey + ':00:00.000Z');
+    const hour = date.getUTCHours();
     const ampm = hour >= 12 ? 'pm' : 'am';
     const hour12 = hour % 12 || 12;
-    return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${hour12}${ampm}`;
+    const month = date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const day = date.getUTCDate();
+    return `${month} ${day}, ${hour12}${ampm}`;
   } else if (period === 'daily') {
     // "2025-11-05" -> "Nov 5"
-    const date = new Date(dateKey);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    // Parse as UTC to match how buckets were generated
+    const date = new Date(dateKey + 'T00:00:00.000Z');
+    const month = date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    const day = date.getUTCDate();
+    return `${month} ${day}`;
   } else {
     // "2025-W45" -> "Week 45"
     const weekNum = dateKey.split('-W')[1];
@@ -105,16 +111,16 @@ function generateTimeBuckets(period: TimePeriod): string[] {
     switch (period) {
       case 'hourly':
         key = current.toISOString().slice(0, 13); // "2025-11-05T14"
-        current.setHours(current.getHours() + 1);
+        current.setUTCHours(current.getUTCHours() + 1);
         break;
       case 'daily':
         key = current.toISOString().slice(0, 10); // "2025-11-05"
-        current.setDate(current.getDate() + 1);
+        current.setUTCDate(current.getUTCDate() + 1);
         break;
       case 'weekly':
         const weekNum = getWeekNumber(current);
-        key = `${current.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
-        current.setDate(current.getDate() + 7);
+        key = `${current.getUTCFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
+        current.setUTCDate(current.getUTCDate() + 7);
         break;
       default:
         key = '';
@@ -160,14 +166,17 @@ export function aggregateByTime(threats: ThreatIndicator[], period: TimePeriod):
 
     switch (period) {
       case 'hourly':
+        // Use UTC to match bucket generation
         key = date.toISOString().slice(0, 13); // "2025-11-05T14"
         break;
       case 'daily':
+        // Use UTC to match bucket generation
         key = date.toISOString().slice(0, 10); // "2025-11-05"
         break;
       case 'weekly':
+        // Use UTC for week calculation
         const weekNum = getWeekNumber(date);
-        key = `${date.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
+        key = `${date.getUTCFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
         break;
       default:
         return;
