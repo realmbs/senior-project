@@ -283,6 +283,10 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const metricsGrid = this.createMetricsGrid();
     main.appendChild(metricsGrid);
 
+    // Visualization toolbar (heatmap + analytics)
+    const visualizationToolbar = this.createVisualizationToolbar();
+    main.appendChild(visualizationToolbar);
+
     // Content grid
     const contentGrid = this.createContentGrid();
     main.appendChild(contentGrid);
@@ -290,25 +294,31 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     return main;
   }
 
-  private createHeatmapSection(): HTMLElement {
-    // Vertical stack container for heatmap and analytics trigger
-    const container = DOMBuilder.createElement('div', {
-      className: 'space-y-3'
+  private createVisualizationToolbar(): HTMLElement {
+    // Horizontal toolbar container for data visualizations
+    const toolbar = DOMBuilder.createElement('div', {
+      className: 'mb-8'
+    });
+
+    // Grid container for visualization cards (responsive: 1 col mobile, 2 col desktop)
+    const grid = DOMBuilder.createElement('div', {
+      className: 'grid grid-cols-1 md:grid-cols-2 gap-4'
     });
 
     // Heatmap widget container
     const heatmapSection = DOMBuilder.createElement('div', {
       id: 'heatmap-section'
     });
-    container.appendChild(heatmapSection);
+    grid.appendChild(heatmapSection);
 
     // Analytics trigger widget container
     const analyticsSection = DOMBuilder.createElement('div', {
       id: 'analytics-trigger-section'
     });
-    container.appendChild(analyticsSection);
+    grid.appendChild(analyticsSection);
 
-    return container;
+    toolbar.appendChild(grid);
+    return toolbar;
   }
 
   private createMetricsGrid(): HTMLElement {
@@ -446,10 +456,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const lookupSection = this.createIOCLookupSection();
     panel.appendChild(lookupSection);
 
-    // Heatmap and Analytics section
-    const heatmapSection = this.createHeatmapSection();
-    panel.appendChild(heatmapSection);
-
+    // Visualization toolbar (heatmap + analytics) moved to main content area
     // Quick actions moved to header settings dropdown
 
     return panel;
