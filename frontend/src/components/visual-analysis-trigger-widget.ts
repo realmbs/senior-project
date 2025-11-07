@@ -76,7 +76,7 @@ export class VisualAnalysisTriggerWidget extends Component<VisualAnalysisTrigger
     });
     const subtitle = DOMBuilder.createElement('p', {
       className: 'text-sm text-gray-400',
-      textContent: 'Click to view time-series analysis and insights'
+      textContent: 'Click to view'
     });
     titleText.appendChild(title);
     titleText.appendChild(subtitle);

@@ -107,7 +107,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     const subtitle = DOMBuilder.createElement('p', {
       id: 'heatmap-subtitle',
       className: 'text-sm text-gray-400',
-      textContent: this.state.isLoading ? 'Loading...' : `${this.state.totalPoints} locations`
+      textContent: this.state.isLoading ? 'Loading...' : `Click to view | ${this.state.totalPoints} locations`
     });
     titleText.appendChild(title);
     titleText.appendChild(subtitle);
@@ -625,7 +625,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
     // Update subtitle in header
     const subtitle = this.querySelector('#heatmap-subtitle');
     if (subtitle) {
-      subtitle.textContent = this.state.isLoading ? 'Loading...' : `${totalPoints} locations`;
+      subtitle.textContent = this.state.isLoading ? 'Loading...' : `Click to view | ${totalPoints} locations`;
     }
 
     // Update collapsed view stats
