@@ -14,6 +14,9 @@ interface VisualAnalysisModalState {
 
 export class VisualAnalysisModal extends Component<VisualAnalysisModalState> {
   private modalOverlay: HTMLElement | null = null;
+  private iocDistributionWidget: any | null = null;
+  private confidenceDistributionWidget: any | null = null;
+  private geographicRiskWidget: any | null = null;
   private timelineChart: any | null = null;
   private sourceComparisonChart: any | null = null;
   private collectionActivityWidget: any | null = null;
@@ -120,7 +123,19 @@ export class VisualAnalysisModal extends Component<VisualAnalysisModalState> {
 
     this.setState({ isOpen: false });
 
-    // Destroy charts
+    // Destroy widgets
+    if (this.iocDistributionWidget) {
+      this.iocDistributionWidget.destroy();
+      this.iocDistributionWidget = null;
+    }
+    if (this.confidenceDistributionWidget) {
+      this.confidenceDistributionWidget.destroy();
+      this.confidenceDistributionWidget = null;
+    }
+    if (this.geographicRiskWidget) {
+      this.geographicRiskWidget.destroy();
+      this.geographicRiskWidget = null;
+    }
     if (this.timelineChart) {
       this.timelineChart.destroy();
       this.timelineChart = null;
@@ -162,7 +177,7 @@ export class VisualAnalysisModal extends Component<VisualAnalysisModalState> {
     }));
     titleContainer.appendChild(DOMBuilder.createElement('p', {
       className: 'text-sm text-gray-400 mt-1',
-      textContent: 'Time-series analysis, source comparison, and collection insights'
+      textContent: 'IOC distribution, confidence analysis, geographic risk, and threat trends'
     }));
     headerTitle.appendChild(titleContainer);
 
@@ -187,33 +202,54 @@ export class VisualAnalysisModal extends Component<VisualAnalysisModalState> {
       className: 'space-y-6'
     });
 
-    // Timeline chart (full width)
+    // Section 1: IOC Distribution (full width)
+    const iocDistributionSection = DOMBuilder.createElement('div', {
+      id: 'ioc-distribution-section',
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
+    });
+    container.appendChild(iocDistributionSection);
+
+    // Section 2: Three-column grid for Confidence, Source, and Geographic Risk
+    const threeColGrid = DOMBuilder.createElement('div', {
+      className: 'grid grid-cols-1 lg:grid-cols-3 gap-6'
+    });
+
+    // Confidence distribution (left)
+    const confidenceSection = DOMBuilder.createElement('div', {
+      id: 'confidence-distribution-section',
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
+    });
+    threeColGrid.appendChild(confidenceSection);
+
+    // Source comparison (middle)
+    const sourceSection = DOMBuilder.createElement('div', {
+      id: 'source-comparison-section',
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
+    });
+    threeColGrid.appendChild(sourceSection);
+
+    // Geographic risk (right)
+    const geographicSection = DOMBuilder.createElement('div', {
+      id: 'geographic-risk-section',
+      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
+    });
+    threeColGrid.appendChild(geographicSection);
+
+    container.appendChild(threeColGrid);
+
+    // Section 3: Timeline chart (full width)
     const timelineSection = DOMBuilder.createElement('div', {
       id: 'timeline-chart-section',
       className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
     });
     container.appendChild(timelineSection);
 
-    // Two-column grid for comparison and activity
-    const gridSection = DOMBuilder.createElement('div', {
-      className: 'grid grid-cols-1 lg:grid-cols-2 gap-6'
-    });
-
-    // Source comparison (left)
-    const sourceSection = DOMBuilder.createElement('div', {
-      id: 'source-comparison-section',
-      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
-    });
-    gridSection.appendChild(sourceSection);
-
-    // Collection activity (right)
+    // Section 4: Collection activity (full width)
     const activitySection = DOMBuilder.createElement('div', {
       id: 'collection-activity-section',
       className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-6'
     });
-    gridSection.appendChild(activitySection);
-
-    container.appendChild(gridSection);
+    container.appendChild(activitySection);
 
     return container;
   }
@@ -234,7 +270,10 @@ export class VisualAnalysisModal extends Component<VisualAnalysisModalState> {
 
       console.log('[VisualAnalysisModal] Chart.js is available, importing widgets...');
 
-      // Dynamically import chart widgets
+      // Dynamically import all widgets
+      const { IOCDistributionWidget } = await import('./ioc-distribution-widget.js');
+      const { ConfidenceDistributionWidget } = await import('./confidence-distribution-widget.js');
+      const { GeographicRiskWidget } = await import('./geographic-risk-widget.js');
       const { TimelineChartWidget } = await import('./timeline-chart-widget.js');
       const { SourceComparisonWidget } = await import('./source-comparison-widget.js');
       const { CollectionActivityWidget } = await import('./collection-activity-widget.js');
@@ -242,15 +281,46 @@ export class VisualAnalysisModal extends Component<VisualAnalysisModalState> {
       console.log('[VisualAnalysisModal] Widgets imported successfully');
 
       // Get container elements
+      const iocDistributionContainer = document.getElementById('ioc-distribution-section');
+      const confidenceDistributionContainer = document.getElementById('confidence-distribution-section');
+      const geographicRiskContainer = document.getElementById('geographic-risk-section');
       const timelineContainer = document.getElementById('timeline-chart-section');
       const sourceContainer = document.getElementById('source-comparison-section');
       const activityContainer = document.getElementById('collection-activity-section');
 
       console.log('[VisualAnalysisModal] Containers found:', {
+        iocDistribution: !!iocDistributionContainer,
+        confidenceDistribution: !!confidenceDistributionContainer,
+        geographicRisk: !!geographicRiskContainer,
         timeline: !!timelineContainer,
         source: !!sourceContainer,
         activity: !!activityContainer
       });
+
+      // Initialize IOC distribution widget
+      if (iocDistributionContainer) {
+        console.log('[VisualAnalysisModal] Creating IOCDistributionWidget...');
+        this.iocDistributionWidget = new IOCDistributionWidget(iocDistributionContainer);
+        this.iocDistributionWidget.update(threats);
+        console.log('[VisualAnalysisModal] IOCDistributionWidget created and updated');
+      }
+
+      // Initialize confidence distribution widget
+      if (confidenceDistributionContainer) {
+        console.log('[VisualAnalysisModal] Creating ConfidenceDistributionWidget...');
+        this.confidenceDistributionWidget = new ConfidenceDistributionWidget(confidenceDistributionContainer);
+        this.confidenceDistributionWidget.update(threats);
+        console.log('[VisualAnalysisModal] ConfidenceDistributionWidget created and updated');
+      }
+
+      // Initialize geographic risk widget (enrichment happens in background)
+      if (geographicRiskContainer) {
+        console.log('[VisualAnalysisModal] Creating GeographicRiskWidget...');
+        this.geographicRiskWidget = new GeographicRiskWidget(geographicRiskContainer);
+        // Non-blocking: enrichment happens asynchronously in the background
+        this.geographicRiskWidget.update(threats);
+        console.log('[VisualAnalysisModal] GeographicRiskWidget created (enriching in background)');
+      }
 
       // Initialize timeline chart
       if (timelineContainer) {
@@ -286,6 +356,16 @@ export class VisualAnalysisModal extends Component<VisualAnalysisModalState> {
    * Update all charts with new data
    */
   private updateCharts(threats: ThreatIndicator[]): void {
+    if (this.iocDistributionWidget) {
+      this.iocDistributionWidget.update(threats);
+    }
+    if (this.confidenceDistributionWidget) {
+      this.confidenceDistributionWidget.update(threats);
+    }
+    if (this.geographicRiskWidget) {
+      // Non-blocking: enrichment happens asynchronously in the background
+      this.geographicRiskWidget.update(threats);
+    }
     if (this.timelineChart) {
       this.timelineChart.update(threats);
     }

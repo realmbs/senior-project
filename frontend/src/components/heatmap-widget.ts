@@ -85,7 +85,7 @@ export class HeatmapWidget extends Component<HeatmapWidgetState> {
 
   private createHeader(): HTMLElement {
     const header = DOMBuilder.createElement('div', {
-      className: 'p-4 flex items-center justify-between'
+      className: 'p-2 flex items-center justify-between'
     });
 
     // Title section
