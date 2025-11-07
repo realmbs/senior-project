@@ -37,6 +37,7 @@ interface DashboardState {
   metricsData: DashboardMetrics;
   recentThreats: ThreatIndicator[];
   isLoading: boolean;
+  isLoadingFullDataset: boolean;
   apiStatus: 'connecting' | 'connected' | 'error';
   threatFilter: 'all' | 'high-risk' | 'recent';
   activeTab: 'ioc-lookup' | 'enrich';
@@ -65,6 +66,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       },
       recentThreats: [],
       isLoading: false,
+      isLoadingFullDataset: false,
       apiStatus: 'connecting',
       threatFilter: 'all',
       activeTab: 'ioc-lookup'
@@ -781,25 +783,25 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   private async loadDashboardData(): Promise<void> {
     if (this.state.isLoading) return;
 
-    console.log('📊 Loading dashboard data...');
+    console.log('📊 Loading initial dashboard data (Phase 1: Fast load)...');
     this.setState({ isLoading: true, apiStatus: 'connecting' });
 
     try {
       // Update API status
       this.updateApiStatus('connecting');
 
-      // Load recent threats (all available)
-      console.log('📡 Making API call to /search?limit=10000');
-      const response = await this.apiCall('/search?limit=10000');
+      // Phase 1: Load initial threats for fast render (150 items)
+      console.log('📡 Phase 1: Making API call to /search?limit=150');
+      const response = await this.apiCall('/search?limit=150');
 
       if (response.ok) {
         const data: SearchResponse = await response.json();
         const threats = data.results.results || [];
-        console.log(`✅ Loaded ${threats.length} threats from API`);
+        console.log(`✅ Phase 1: Loaded ${threats.length} threats from API (initial display)`);
 
-        // Calculate metrics
+        // Calculate metrics from initial data
         const metricsData = this.calculateMetrics(threats);
-        console.log('📈 Calculated metrics:', metricsData);
+        console.log('📈 Phase 1: Calculated initial metrics:', metricsData);
 
         // Update state
         this.setState({
@@ -810,11 +812,14 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
         });
 
         // Update components
-        console.log('🔄 Updating components...');
+        console.log('🔄 Phase 1: Updating components...');
         this.updateMetricsDisplay();
         this.updateThreatsDisplay();
         this.updateApiStatus('connected');
-        console.log('✅ Dashboard data loaded successfully');
+        console.log('✅ Phase 1: Dashboard initial data loaded successfully');
+
+        // Phase 2: Load full dataset in background (non-blocking)
+        setTimeout(() => this.loadFullDataset(), 100);
       } else {
         throw new Error(`API Error: ${response.status}`);
       }
@@ -823,6 +828,52 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       this.setState({ isLoading: false, apiStatus: 'error' });
       this.updateApiStatus('error');
       this.showNotification('Failed to load dashboard data', 'error');
+    }
+  }
+
+  private async loadFullDataset(): Promise<void> {
+    // Skip if already loading full dataset
+    if (this.state.isLoadingFullDataset) return;
+
+    console.log('📊 Phase 2: Loading full dataset in background...');
+    this.setState({ isLoadingFullDataset: true });
+    this.updateApiStatusFullDataset(true);
+
+    try {
+      console.log('📡 Phase 2: Making API call to /search?limit=10000');
+      const response = await this.apiCall('/search?limit=10000');
+
+      if (response.ok) {
+        const data: SearchResponse = await response.json();
+        const threats = data.results.results || [];
+        console.log(`✅ Phase 2: Loaded ${threats.length} threats from API (full dataset)`);
+
+        // Calculate metrics from full dataset
+        const metricsData = this.calculateMetrics(threats);
+        console.log('📈 Phase 2: Calculated full metrics:', metricsData);
+
+        // Update state with full dataset
+        this.setState({
+          recentThreats: threats,
+          metricsData,
+          isLoadingFullDataset: false
+        });
+
+        // Update components with full data
+        console.log('🔄 Phase 2: Updating components with full data...');
+        this.updateMetricsDisplay();
+        this.updateThreatsDisplay();
+        this.updateApiStatusFullDataset(false);
+        console.log('✅ Phase 2: Full dataset loaded successfully');
+      } else {
+        throw new Error(`API Error: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('❌ Phase 2: Failed to load full dataset:', error);
+      this.setState({ isLoadingFullDataset: false });
+      this.updateApiStatusFullDataset(false);
+      // Don't show error notification - initial data is still displayed
+      console.warn('⚠️ Continuing with initial dataset only');
     }
   }
 
@@ -1530,6 +1581,41 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     statusElement.appendChild(indicator);
     statusElement.appendChild(text);
+  }
+
+  private updateApiStatusFullDataset(isLoading: boolean): void {
+    const statusElement = this.querySelector('#api-status');
+    if (!statusElement) return;
+
+    DOMBuilder.clearChildren(statusElement);
+
+    if (isLoading) {
+      // Show "Loading full dataset..." indicator
+      const indicator = DOMBuilder.createElement('div', {
+        className: 'w-2 h-2 bg-blue-400 rounded-full animate-pulse'
+      });
+
+      const text = DOMBuilder.createElement('span', {
+        className: 'text-gray-300',
+        textContent: 'Loading full dataset...'
+      });
+
+      statusElement.appendChild(indicator);
+      statusElement.appendChild(text);
+    } else {
+      // Show "All data loaded" indicator
+      const indicator = DOMBuilder.createElement('div', {
+        className: 'w-2 h-2 bg-green-400 rounded-full'
+      });
+
+      const text = DOMBuilder.createElement('span', {
+        className: 'text-gray-300',
+        textContent: 'All data loaded'
+      });
+
+      statusElement.appendChild(indicator);
+      statusElement.appendChild(text);
+    }
   }
 
   private getThreatColor(confidence: number): 'red' | 'yellow' | 'gray' {
