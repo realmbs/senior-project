@@ -1,0 +1,121 @@
+# =============================================================================
+# Terraform State Drift - Expected/Ignored Resources
+# =============================================================================
+# This file documents Terraform resources that are known to be out of sync
+# with AWS reality. These resources were created manually and are intentionally
+# not tracked in Terraform state.
+#
+# Last Updated: November 7, 2025
+# Documentation: docs/terraform-state-drift.md
+#
+# IMPORTANT: This is a documentation file only. Terraform does not natively
+# support a .terraform-drift-ignore file. This serves as a reference for
+# developers to understand which drift is expected and acceptable.
+# =============================================================================
+
+## API Gateway Resources - Manually Managed via AWS CLI
+
+# API Gateway deployment (created manually on Nov 4, 2025)
+# AWS Resource: u88kzux168/59wbkc
+# Reason: Terraform deployment failed, manual creation restored functionality
+module.networking.aws_api_gateway_deployment.main
+
+# API Gateway stage (created manually on Nov 3, 2025, updated Nov 4)
+# AWS Resource: u88kzux168/dev
+# Reason: Linked to manual deployment, not tracked in state
+module.networking.aws_api_gateway_stage.main
+
+# API Gateway integrations (created manually on Nov 4, 2025)
+# AWS Resources: AWS_PROXY integrations to Lambda functions
+# Reason: Terraform timeout prevented integration creation
+module.networking.aws_api_gateway_integration.collect_integration
+module.networking.aws_api_gateway_integration.enrich_integration
+module.networking.aws_api_gateway_integration.search_integration
+
+# Lambda permissions for API Gateway invocation
+# AWS Resources: Statement IDs: allow-api-gateway-*
+# Reason: Created manually with integrations
+module.networking.aws_lambda_permission.allow_api_gateway_collect
+module.networking.aws_lambda_permission.allow_api_gateway_enrich
+module.networking.aws_lambda_permission.allow_api_gateway_search
+
+# API Gateway usage plan (created manually on Nov 4, 2025)
+# AWS Resource: Usage plan ID (check AWS Console)
+# Reason: Manual API key association
+module.networking.aws_api_gateway_usage_plan.main
+module.networking.aws_api_gateway_usage_plan_key.main
+
+# API Gateway method settings (created manually)
+# AWS Resource: Stage-level settings
+# Reason: Part of manual stage configuration
+module.networking.aws_api_gateway_method_settings.main
+
+## OPTIONS Method Integrations - Configuration Drift
+
+# OPTIONS integrations show wrong type in Terraform state
+# State: AWS_PROXY (incorrect)
+# AWS: MOCK (correct)
+# Reason: State drift from manual CORS handler implementation
+module.networking.aws_api_gateway_integration.collect_options_integration
+module.networking.aws_api_gateway_integration.enrich_options_integration
+module.networking.aws_api_gateway_integration.search_options_integration
+
+## CloudFront Distribution - Not Deployed
+
+# CloudFront distribution defined in Terraform but never created
+# Status: NOT in Terraform state, NOT in AWS
+# Reason: Frontend deployed to S3 static hosting instead
+module.networking.aws_cloudfront_distribution.frontend
+
+## Compute Resources - Minor Configuration Drift
+
+# Lambda functions have minor config drift (source hash, timeout, DLQ)
+# Status: Tracked in state but with config differences
+# Reason: Manual AWS CLI updates for configuration changes
+module.compute.aws_lambda_function.threat_collector
+module.compute.aws_lambda_function.data_processor
+module.compute.aws_lambda_function.osint_enrichment
+
+## CloudWatch Log Groups - Not Created Yet
+
+# Lambda log groups defined but not created
+# Status: Defined in Terraform, will be created on next apply
+# Reason: Low priority, safe to create
+module.compute.aws_cloudwatch_log_group.threat_collector_logs
+module.compute.aws_cloudwatch_log_group.data_processor_logs
+module.compute.aws_cloudwatch_log_group.osint_enrichment_logs
+
+## Storage Resources - Minor Configuration Drift
+
+# S3 bucket configurations show minor drift
+# Status: Tracked in state, safe to update
+# Reason: Configurations added after initial bucket creation
+module.storage.aws_s3_bucket_lifecycle_configuration.raw_threat_data
+module.storage.aws_s3_bucket_public_access_block.raw_threat_data
+module.storage.aws_s3_bucket_server_side_encryption_configuration.raw_threat_data
+module.storage.aws_s3_bucket_versioning.raw_threat_data
+module.storage.aws_cloudwatch_log_metric_filter.large_s3_uploads
+
+# =============================================================================
+# Management Guidelines
+# =============================================================================
+#
+# SAFE TO APPLY (these modules are tracked correctly):
+# - module.security (IAM roles, Secrets Manager)
+# - module.database (DynamoDB tables)
+# - module.storage (S3 buckets - minor drift only)
+#
+# UNSAFE TO APPLY (will break API Gateway):
+# - module.networking (26 resources out of sync)
+#
+# CONDITIONAL APPLY (check plan output first):
+# - module.compute (Lambda functions - minor config drift)
+#
+# =============================================================================
+# Summary Statistics
+# =============================================================================
+# Total resources out of sync: 26
+# High-risk resources: 10 (API Gateway core resources)
+# Medium-risk resources: 3 (OPTIONS integrations with wrong type)
+# Low-risk resources: 13 (log groups, S3 configs)
+# =============================================================================

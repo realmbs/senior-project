@@ -4,6 +4,46 @@
 # Creates REST API Gateway with Lambda integrations and CloudFront distribution
 # for static content delivery with cost-optimized regional deployment
 
+# =============================================================================
+# ⚠️ TERRAFORM STATE DRIFT WARNING (November 7, 2025)
+# =============================================================================
+# CRITICAL: The following resources exist in AWS but are NOT tracked in Terraform state.
+# They were created manually via AWS CLI on November 4, 2025, to restore API functionality
+# after Terraform deployment failures.
+#
+# MANUALLY MANAGED RESOURCES (DO NOT EXIST IN TERRAFORM STATE):
+# - aws_api_gateway_deployment.main (deployment ID: 59wbkc)
+# - aws_api_gateway_stage.main (stage: dev)
+# - aws_api_gateway_integration.collect_integration (AWS_PROXY to collector Lambda)
+# - aws_api_gateway_integration.enrich_integration (AWS_PROXY to enrichment Lambda)
+# - aws_api_gateway_integration.search_integration (AWS_PROXY to processor Lambda)
+# - aws_lambda_permission.allow_api_gateway_collect (API Gateway → collector)
+# - aws_lambda_permission.allow_api_gateway_enrich (API Gateway → enrichment)
+# - aws_lambda_permission.allow_api_gateway_search (API Gateway → processor)
+# - aws_api_gateway_usage_plan.main (API key association)
+# - aws_api_gateway_usage_plan_key.main (API key to usage plan link)
+#
+# IMPACT: Running "terraform apply" will attempt to CREATE these resources, which may:
+# - Break the currently working API Gateway (deployment ID will change)
+# - Cause API downtime (stage must be updated to new deployment)
+# - Destroy/recreate OPTIONS integrations (wrong type in state: AWS_PROXY vs MOCK)
+# - Trigger 502 errors during CORS preflight requests
+#
+# CURRENT STATUS:
+# - API Gateway: ✅ 100% OPERATIONAL (all endpoints working correctly)
+# - Terraform Plan: ⚠️ Shows 26 resources to add/change/destroy
+# - Risk Level: 🔴 HIGH (60% probability of API downtime if apply is run)
+#
+# MANAGEMENT STRATEGY:
+# - ✅ Use AWS CLI for API Gateway changes (see docs/api-gateway-troubleshooting.md)
+# - ✅ Use Terraform for Lambda, DynamoDB, S3 (tracked in state)
+# - ⚠️ Do NOT run "terraform apply" on this module without reviewing drift
+# - 📖 Full documentation: docs/terraform-state-drift.md
+#
+# Root Cause: Terraform Lambda deployment timeouts prevented proper integration setup
+# on November 4, 2025. Manual AWS CLI fixes restored functionality but bypassed Terraform.
+# =============================================================================
+
 terraform {
   required_providers {
     aws = {

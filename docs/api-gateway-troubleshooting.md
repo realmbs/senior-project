@@ -1,5 +1,25 @@
 # API Gateway Troubleshooting Guide
 
+---
+
+## ⚠️ IMPORTANT: TERRAFORM STATE DRIFT
+
+**Last Updated**: November 7, 2025
+
+The manual fixes documented in this guide successfully restored API Gateway functionality, but these resources are **NOT tracked in Terraform state**.
+
+**Key Facts:**
+- ✅ API Gateway is 100% operational (all endpoints working)
+- ⚠️ 26 resources show drift in `terraform plan`
+- ⚠️ Running `terraform apply` will attempt to recreate these resources
+- 🔴 **High risk of API downtime** if Terraform is run on module.networking
+
+**Recommendation**: Continue using AWS CLI for API Gateway changes. Do NOT run `terraform apply` without understanding the risks.
+
+📖 **Full details**: See `docs/terraform-state-drift.md` for comprehensive analysis, risk assessment, and management strategy.
+
+---
+
 ## Overview
 
 This document provides a comprehensive guide to the API Gateway deployment issues encountered during the threat intelligence platform setup and the solutions implemented to resolve them.
