@@ -124,7 +124,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
   private createHeader(): HTMLElement {
     const header = DOMBuilder.createElement('header', {
-      className: 'bg-gray-800/50 backdrop-blur-lg border-b border-gray-700/50'
+      className: 'bg-gray-800/50 backdrop-blur-lg border-b border-gray-700/50 relative',
+      style: { zIndex: '1000' }
     });
 
     const container = DOMBuilder.createElement('div', {
@@ -181,8 +182,89 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     });
     refreshBtn.appendChild(DOMBuilder.createIcon('refresh-cw', 'w-4 h-4'));
 
+    // Settings dropdown
+    const settingsContainer = DOMBuilder.createElement('div', {
+      className: 'relative'
+    });
+
+    const settingsBtn = DOMBuilder.createElement('button', {
+      id: 'settings-btn',
+      className: 'p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors'
+    });
+    settingsBtn.appendChild(DOMBuilder.createIcon('settings', 'w-4 h-4'));
+
+    const settingsDropdown = DOMBuilder.createElement('div', {
+      id: 'settings-dropdown',
+      className: 'hidden absolute right-0 mt-2 w-64 bg-gray-800 rounded-lg border border-gray-700 shadow-xl',
+      style: { top: '100%', zIndex: '1100' }
+    });
+
+    // API Testing menu item
+    const apiTestItem = DOMBuilder.createElement('a', {
+      attributes: { href: '/api-test.html' },
+      className: 'block px-4 py-3 hover:bg-gray-700/50 transition-colors'
+    });
+
+    const apiTestContent = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+
+    const apiTestIcon = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-green-500/20 rounded-lg'
+    });
+    apiTestIcon.appendChild(DOMBuilder.createIcon('settings', 'w-4 h-4 text-green-400'));
+
+    const apiTestText = DOMBuilder.createElement('div');
+    apiTestText.appendChild(DOMBuilder.createElement('div', {
+      className: 'font-medium text-sm',
+      textContent: 'API Testing'
+    }));
+    apiTestText.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-xs text-gray-400',
+      textContent: 'Test API endpoints'
+    }));
+
+    apiTestContent.appendChild(apiTestIcon);
+    apiTestContent.appendChild(apiTestText);
+    apiTestItem.appendChild(apiTestContent);
+
+    // Collection menu item
+    const collectItem = DOMBuilder.createElement('button', {
+      id: 'collect-btn',
+      className: 'w-full block px-4 py-3 hover:bg-gray-700/50 transition-colors text-left'
+    });
+
+    const collectContent = DOMBuilder.createElement('div', {
+      className: 'flex items-center space-x-3'
+    });
+
+    const collectIcon = DOMBuilder.createElement('div', {
+      className: 'p-2 bg-purple-500/20 rounded-lg'
+    });
+    collectIcon.appendChild(DOMBuilder.createIcon('download-cloud', 'w-4 h-4 text-purple-400'));
+
+    const collectText = DOMBuilder.createElement('div');
+    collectText.appendChild(DOMBuilder.createElement('div', {
+      className: 'font-medium text-sm',
+      textContent: 'Trigger Collection'
+    }));
+    collectText.appendChild(DOMBuilder.createElement('div', {
+      className: 'text-xs text-gray-400',
+      textContent: 'Collect new threat data'
+    }));
+
+    collectContent.appendChild(collectIcon);
+    collectContent.appendChild(collectText);
+    collectItem.appendChild(collectContent);
+
+    settingsDropdown.appendChild(apiTestItem);
+    settingsDropdown.appendChild(collectItem);
+    settingsContainer.appendChild(settingsBtn);
+    settingsContainer.appendChild(settingsDropdown);
+
     actions.appendChild(apiStatus);
     actions.appendChild(refreshBtn);
+    actions.appendChild(settingsContainer);
 
     headerContent.appendChild(branding);
     headerContent.appendChild(actions);
@@ -205,32 +287,28 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const contentGrid = this.createContentGrid();
     main.appendChild(contentGrid);
 
-    // Heatmap section (moved to bottom)
-    const heatmapSection = this.createHeatmapSection();
-    main.appendChild(heatmapSection);
-
     return main;
   }
 
   private createHeatmapSection(): HTMLElement {
-    // Two-column grid container for heatmap and analytics trigger
-    const gridContainer = DOMBuilder.createElement('div', {
-      className: 'grid grid-cols-1 md:grid-cols-2 gap-6 mt-8'
+    // Vertical stack container for heatmap and analytics trigger
+    const container = DOMBuilder.createElement('div', {
+      className: 'space-y-3'
     });
 
-    // Heatmap widget container (left)
+    // Heatmap widget container
     const heatmapSection = DOMBuilder.createElement('div', {
       id: 'heatmap-section'
     });
-    gridContainer.appendChild(heatmapSection);
+    container.appendChild(heatmapSection);
 
-    // Analytics trigger widget container (right)
+    // Analytics trigger widget container
     const analyticsSection = DOMBuilder.createElement('div', {
       id: 'analytics-trigger-section'
     });
-    gridContainer.appendChild(analyticsSection);
+    container.appendChild(analyticsSection);
 
-    return gridContainer;
+    return container;
   }
 
   private createMetricsGrid(): HTMLElement {
@@ -368,9 +446,11 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     const lookupSection = this.createIOCLookupSection();
     panel.appendChild(lookupSection);
 
-    // Quick actions
-    const actionsSection = this.createQuickActionsSection();
-    panel.appendChild(actionsSection);
+    // Heatmap and Analytics section
+    const heatmapSection = this.createHeatmapSection();
+    panel.appendChild(heatmapSection);
+
+    // Quick actions moved to header settings dropdown
 
     return panel;
   }
@@ -515,74 +595,75 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     return content;
   }
 
-  private createQuickActionsSection(): HTMLElement {
-    const section = DOMBuilder.createElement('div', {
-      className: 'grid grid-cols-1 gap-4'
-    });
-
-    // API Testing link
-    const apiTestLink = DOMBuilder.createElement('a', {
-      attributes: { href: '/api-test.html' },
-      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-blue-500/50 transition-colors group block'
-    });
-
-    const apiTestContent = DOMBuilder.createElement('div', {
-      className: 'flex items-center space-x-3'
-    });
-
-    const apiTestIcon = DOMBuilder.createElement('div', {
-      className: 'p-2 bg-green-500/20 rounded-lg group-hover:bg-green-500/30 transition-colors'
-    });
-    apiTestIcon.appendChild(DOMBuilder.createIcon('settings', 'w-5 h-5 text-green-400'));
-
-    const apiTestText = DOMBuilder.createElement('div');
-    apiTestText.appendChild(DOMBuilder.createElement('h3', {
-      className: 'font-medium',
-      textContent: 'API Testing'
-    }));
-    apiTestText.appendChild(DOMBuilder.createElement('p', {
-      className: 'text-sm text-gray-400',
-      textContent: 'Test API endpoints'
-    }));
-
-    apiTestContent.appendChild(apiTestIcon);
-    apiTestContent.appendChild(apiTestText);
-    apiTestLink.appendChild(apiTestContent);
-
-    // Collection button
-    const collectBtn = DOMBuilder.createElement('button', {
-      id: 'collect-btn',
-      className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-purple-500/50 transition-colors group w-full text-left'
-    });
-
-    const collectContent = DOMBuilder.createElement('div', {
-      className: 'flex items-center space-x-3'
-    });
-
-    const collectIcon = DOMBuilder.createElement('div', {
-      className: 'p-2 bg-purple-500/20 rounded-lg group-hover:bg-purple-500/30 transition-colors'
-    });
-    collectIcon.appendChild(DOMBuilder.createIcon('download-cloud', 'w-5 h-5 text-purple-400'));
-
-    const collectText = DOMBuilder.createElement('div');
-    collectText.appendChild(DOMBuilder.createElement('h3', {
-      className: 'font-medium',
-      textContent: 'Trigger Collection'
-    }));
-    collectText.appendChild(DOMBuilder.createElement('p', {
-      className: 'text-sm text-gray-400',
-      textContent: 'Collect new threat data'
-    }));
-
-    collectContent.appendChild(collectIcon);
-    collectContent.appendChild(collectText);
-    collectBtn.appendChild(collectContent);
-
-    section.appendChild(apiTestLink);
-    section.appendChild(collectBtn);
-
-    return section;
-  }
+  // Deprecated: Quick actions moved to header settings dropdown
+  // private createQuickActionsSection(): HTMLElement {
+  //   const section = DOMBuilder.createElement('div', {
+  //     className: 'grid grid-cols-1 gap-4'
+  //   });
+  //
+  //   // API Testing link
+  //   const apiTestLink = DOMBuilder.createElement('a', {
+  //     attributes: { href: '/api-test.html' },
+  //     className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-blue-500/50 transition-colors group block'
+  //   });
+  //
+  //   const apiTestContent = DOMBuilder.createElement('div', {
+  //     className: 'flex items-center space-x-3'
+  //   });
+  //
+  //   const apiTestIcon = DOMBuilder.createElement('div', {
+  //     className: 'p-2 bg-green-500/20 rounded-lg group-hover:bg-green-500/30 transition-colors'
+  //   });
+  //   apiTestIcon.appendChild(DOMBuilder.createIcon('settings', 'w-5 h-5 text-green-400'));
+  //
+  //   const apiTestText = DOMBuilder.createElement('div');
+  //   apiTestText.appendChild(DOMBuilder.createElement('h3', {
+  //     className: 'font-medium',
+  //     textContent: 'API Testing'
+  //   }));
+  //   apiTestText.appendChild(DOMBuilder.createElement('p', {
+  //     className: 'text-sm text-gray-400',
+  //     textContent: 'Test API endpoints'
+  //   }));
+  //
+  //   apiTestContent.appendChild(apiTestIcon);
+  //   apiTestContent.appendChild(apiTestText);
+  //   apiTestLink.appendChild(apiTestContent);
+  //
+  //   // Collection button
+  //   const collectBtn = DOMBuilder.createElement('button', {
+  //     id: 'collect-btn',
+  //     className: 'bg-gray-800/50 backdrop-blur-lg rounded-xl border border-gray-700/50 p-4 hover:border-purple-500/50 transition-colors group w-full text-left'
+  //   });
+  //
+  //   const collectContent = DOMBuilder.createElement('div', {
+  //     className: 'flex items-center space-x-3'
+  //   });
+  //
+  //   const collectIcon = DOMBuilder.createElement('div', {
+  //     className: 'p-2 bg-purple-500/20 rounded-lg group-hover:bg-purple-500/30 transition-colors'
+  //   });
+  //   collectIcon.appendChild(DOMBuilder.createIcon('download-cloud', 'w-5 h-5 text-purple-400'));
+  //
+  //   const collectText = DOMBuilder.createElement('div');
+  //   collectText.appendChild(DOMBuilder.createElement('h3', {
+  //     className: 'font-medium',
+  //     textContent: 'Trigger Collection'
+  //   }));
+  //   collectText.appendChild(DOMBuilder.createElement('p', {
+  //     className: 'text-sm text-gray-400',
+  //     textContent: 'Collect new threat data'
+  //   }));
+  //
+  //   collectContent.appendChild(collectIcon);
+  //   collectContent.appendChild(collectText);
+  //   collectBtn.appendChild(collectContent);
+  //
+  //   section.appendChild(apiTestLink);
+  //   section.appendChild(collectBtn);
+  //
+  //   return section;
+  // }
 
   private initializeComponents(): void {
     console.log('🔧 Initializing components...');
@@ -701,6 +782,25 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       this.addEventListener(refreshBtn, 'click', () => this.loadDashboardData());
     }
 
+    // Settings dropdown toggle
+    const settingsBtn = this.querySelector('#settings-btn');
+    const settingsDropdown = this.querySelector('#settings-dropdown');
+
+    if (settingsBtn && settingsDropdown) {
+      this.addEventListener(settingsBtn, 'click', (e) => {
+        e.stopPropagation();
+        settingsDropdown.classList.toggle('hidden');
+        this.refreshIcons();
+      });
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', () => {
+        if (settingsDropdown && !settingsDropdown.classList.contains('hidden')) {
+          settingsDropdown.classList.add('hidden');
+        }
+      });
+    }
+
     // Filter button and dropdown
     const filterBtn = this.querySelector('#threat-filter-btn');
     const filterDropdown = this.querySelector('#threat-filter-dropdown');
@@ -748,7 +848,14 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     // Collection trigger
     const collectBtn = this.querySelector('#collect-btn');
     if (collectBtn) {
-      this.addEventListener(collectBtn, 'click', () => this.triggerCollection());
+      this.addEventListener(collectBtn, 'click', () => {
+        this.triggerCollection();
+        // Close settings dropdown
+        const settingsDropdown = this.querySelector('#settings-dropdown');
+        if (settingsDropdown) {
+          settingsDropdown.classList.add('hidden');
+        }
+      });
     }
 
     // Tab switching
@@ -1134,7 +1241,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     // Shodan Data
     if (enriched.shodan) {
-      const shodanFields: Array<{label: string, value: string}> = [
+      const shodanFields: Array<{ label: string, value: string }> = [
         { label: 'IP Address', value: enriched.shodan.ip },
         { label: 'Location', value: `${enriched.shodan.city}, ${enriched.shodan.country_name}` },
         { label: 'Organization', value: enriched.shodan.org }
@@ -1159,7 +1266,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.setupClearEnrichListener();
   }
 
-  private createEnrichResultCard(title: string, icon: string, fields: Array<{label: string, value: string}>): HTMLElement {
+  private createEnrichResultCard(title: string, icon: string, fields: Array<{ label: string, value: string }>): HTMLElement {
     const card = DOMBuilder.createElement('div', {
       className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
     });
@@ -1682,7 +1789,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     // STIX Data (if available)
     if (threat.stix_data) {
-      const stixDetails: Array<{label: string, value: string, mono?: boolean}> = [];
+      const stixDetails: Array<{ label: string, value: string, mono?: boolean }> = [];
 
       if (threat.stix_data.pattern) {
         stixDetails.push({ label: 'Pattern', value: threat.stix_data.pattern, mono: true });
@@ -1742,7 +1849,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     document.addEventListener('keydown', handleEscape);
   }
 
-  private createModalSection(title: string, fields: Array<{label: string, value: string, mono?: boolean, badge?: 'red' | 'yellow' | 'gray'}>): HTMLElement {
+  private createModalSection(title: string, fields: Array<{ label: string, value: string, mono?: boolean, badge?: 'red' | 'yellow' | 'gray' }>): HTMLElement {
     const section = DOMBuilder.createElement('div');
 
     const sectionTitle = DOMBuilder.createElement('h3', {
@@ -1925,7 +2032,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
 
     // Shodan section
     if (enriched.shodan) {
-      const shodanFields: Array<{label: string, value: string}> = [
+      const shodanFields: Array<{ label: string, value: string }> = [
         { label: 'IP Address', value: enriched.shodan.ip },
         { label: 'Country', value: `${enriched.shodan.country_name} (${enriched.shodan.country_code})` },
         { label: 'City', value: enriched.shodan.city },
@@ -1966,7 +2073,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     this.refreshIcons();
   }
 
-  private createEnrichmentSubsection(title: string, icon: string, fields: Array<{label: string, value: string}>): HTMLElement {
+  private createEnrichmentSubsection(title: string, icon: string, fields: Array<{ label: string, value: string }>): HTMLElement {
     const section = DOMBuilder.createElement('div', {
       className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
     });
@@ -2010,7 +2117,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     return section;
   }
 
-  private createServicesSection(services: Array<{port: number, protocol: string, product: string | null, version: string | null, banner: string}>): HTMLElement {
+  private createServicesSection(services: Array<{ port: number, protocol: string, product: string | null, version: string | null, banner: string }>): HTMLElement {
     const section = DOMBuilder.createElement('div', {
       className: 'bg-gray-700/20 rounded-lg p-4 border border-gray-600/30'
     });
