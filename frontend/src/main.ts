@@ -2474,7 +2474,8 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       warning: 'bg-yellow-500'
     };
 
-    notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-4 py-2 rounded-lg shadow-lg z-50 transition-opacity`;
+    notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-4 py-2 rounded-lg shadow-lg transition-opacity`;
+    notification.style.zIndex = '1100'; // Above header (z-index: 1000)
     notification.textContent = message;
     document.body.appendChild(notification);
 
