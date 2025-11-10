@@ -4,11 +4,12 @@ import { Component } from './lib/component.js';
 import { MetricsWidget } from './components/metrics-widget.js';
 import { ThreatList } from './components/threat-list.js';
 import type { ThreatIndicator } from './components/threat-card.js';
-import { enrichIndicator, detectIocType, collectThreats, type EnrichmentResponse } from './lib/api.js';
+import { enrichIndicator, detectIocType, collectThreats, searchThreats, type EnrichmentResponse } from './lib/api.js';
 import { addCollectionMetric } from './lib/analytics-utils.js';
 import { HeatmapWidget } from './components/heatmap-widget.js';
 import { VisualAnalysisTriggerWidget } from './components/visual-analysis-trigger-widget.js';
 import { VisualAnalysisModal } from './components/visual-analysis-modal.js';
+import { SettingsModal } from './components/settings-modal.js';
 
 // API Configuration
 const API_CONFIG = {
@@ -49,6 +50,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   private threatList: ThreatList | null = null;
   private heatmapWidget: HeatmapWidget | null = null;
   private analyticsModal: VisualAnalysisModal | null = null;
+  private settingsModal: SettingsModal | null = null;
 
   // Auto-refresh interval
   private refreshInterval: number | null = null;
@@ -193,74 +195,7 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
     });
     settingsBtn.appendChild(DOMBuilder.createIcon('settings', 'w-4 h-4'));
 
-    const settingsDropdown = DOMBuilder.createElement('div', {
-      id: 'settings-dropdown',
-      className: 'hidden absolute right-0 mt-2 w-64 bg-gray-800 rounded-lg border border-gray-700 shadow-xl',
-      style: { top: '100%', zIndex: '1100' }
-    });
-
-    // API Testing menu item
-    const apiTestItem = DOMBuilder.createElement('a', {
-      attributes: { href: '/api-test.html' },
-      className: 'block px-4 py-3 hover:bg-gray-700/50 transition-colors'
-    });
-
-    const apiTestContent = DOMBuilder.createElement('div', {
-      className: 'flex items-center space-x-3'
-    });
-
-    const apiTestIcon = DOMBuilder.createElement('div', {
-      className: 'p-2 bg-green-500/20 rounded-lg'
-    });
-    apiTestIcon.appendChild(DOMBuilder.createIcon('settings', 'w-4 h-4 text-green-400'));
-
-    const apiTestText = DOMBuilder.createElement('div');
-    apiTestText.appendChild(DOMBuilder.createElement('div', {
-      className: 'font-medium text-sm',
-      textContent: 'API Testing'
-    }));
-    apiTestText.appendChild(DOMBuilder.createElement('div', {
-      className: 'text-xs text-gray-400',
-      textContent: 'Test API endpoints'
-    }));
-
-    apiTestContent.appendChild(apiTestIcon);
-    apiTestContent.appendChild(apiTestText);
-    apiTestItem.appendChild(apiTestContent);
-
-    // Collection menu item
-    const collectItem = DOMBuilder.createElement('button', {
-      id: 'collect-btn',
-      className: 'w-full block px-4 py-3 hover:bg-gray-700/50 transition-colors text-left'
-    });
-
-    const collectContent = DOMBuilder.createElement('div', {
-      className: 'flex items-center space-x-3'
-    });
-
-    const collectIcon = DOMBuilder.createElement('div', {
-      className: 'p-2 bg-purple-500/20 rounded-lg'
-    });
-    collectIcon.appendChild(DOMBuilder.createIcon('download-cloud', 'w-4 h-4 text-purple-400'));
-
-    const collectText = DOMBuilder.createElement('div');
-    collectText.appendChild(DOMBuilder.createElement('div', {
-      className: 'font-medium text-sm',
-      textContent: 'Trigger Collection'
-    }));
-    collectText.appendChild(DOMBuilder.createElement('div', {
-      className: 'text-xs text-gray-400',
-      textContent: 'Collect new threat data'
-    }));
-
-    collectContent.appendChild(collectIcon);
-    collectContent.appendChild(collectText);
-    collectItem.appendChild(collectContent);
-
-    settingsDropdown.appendChild(apiTestItem);
-    settingsDropdown.appendChild(collectItem);
     settingsContainer.appendChild(settingsBtn);
-    settingsContainer.appendChild(settingsDropdown);
 
     actions.appendChild(apiStatus);
     actions.appendChild(refreshBtn);
@@ -727,6 +662,19 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       console.error('❌ Failed to create analytics modal:', error);
     }
 
+    // Initialize settings modal
+    try {
+      console.log('✅ Creating settings modal');
+      const settingsContainer = DOMBuilder.createElement('div');
+      this.settingsModal = new SettingsModal(settingsContainer, {
+        onTriggerCollection: () => this.triggerCollection(),
+        onTestSearch: () => this.testSearchEndpoint(),
+        onTestEnrich: () => this.testEnrichEndpoint()
+      });
+    } catch (error) {
+      console.error('❌ Failed to create settings modal:', error);
+    }
+
     // Initialize analytics trigger widget
     const analyticsContainer = this.querySelector('#analytics-trigger-section');
     if (analyticsContainer) {
@@ -789,21 +737,13 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       this.addEventListener(refreshBtn, 'click', () => this.loadDashboardData());
     }
 
-    // Settings dropdown toggle
+    // Settings button - open modal
     const settingsBtn = this.querySelector('#settings-btn');
-    const settingsDropdown = this.querySelector('#settings-dropdown');
-
-    if (settingsBtn && settingsDropdown) {
+    if (settingsBtn) {
       this.addEventListener(settingsBtn, 'click', (e) => {
         e.stopPropagation();
-        settingsDropdown.classList.toggle('hidden');
-        this.refreshIcons();
-      });
-
-      // Close dropdown when clicking outside
-      document.addEventListener('click', () => {
-        if (settingsDropdown && !settingsDropdown.classList.contains('hidden')) {
-          settingsDropdown.classList.add('hidden');
+        if (this.settingsModal) {
+          this.settingsModal.openModal();
         }
       });
     }
@@ -848,19 +788,6 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
       this.addEventListener(iocInput, 'keypress', (e) => {
         if (e.key === 'Enter') {
           this.handleSearch();
-        }
-      });
-    }
-
-    // Collection trigger
-    const collectBtn = this.querySelector('#collect-btn');
-    if (collectBtn) {
-      this.addEventListener(collectBtn, 'click', () => {
-        this.triggerCollection();
-        // Close settings dropdown
-        const settingsDropdown = this.querySelector('#settings-dropdown');
-        if (settingsDropdown) {
-          settingsDropdown.classList.add('hidden');
         }
       });
     }
@@ -1574,15 +1501,6 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
   }
 
   private async triggerCollection(): Promise<void> {
-    const collectBtn = this.querySelector('#collect-btn');
-    if (!collectBtn) return;
-
-    // Store original content
-    const originalContent = collectBtn.cloneNode(true) as HTMLElement;
-
-    // Set loading state
-    this.setCollectionButtonLoading(collectBtn, true);
-
     try {
       // Use the proper API client with correct parameters
       const response = await collectThreats(['otx', 'abuse_ch'], 20, 'manual');
@@ -1627,48 +1545,45 @@ class ThreatIntelligenceDashboard extends Component<DashboardState> {
           status: 'error'
         });
       }
-    } finally {
-      // Restore original content
-      DOMBuilder.clearChildren(collectBtn);
-      while (originalContent.firstChild) {
-        collectBtn.appendChild(originalContent.firstChild);
-      }
-      this.refreshIcons();
     }
   }
 
-  private setCollectionButtonLoading(button: HTMLElement, loading: boolean): void {
-    if (!loading) return; // Restoration is handled in finally block
+  private async testSearchEndpoint(): Promise<void> {
+    try {
+      console.log('Testing search endpoint...');
+      const response = await searchThreats(5);
+      console.log('Search endpoint test successful:', response);
+      this.showNotification(
+        `Search endpoint working! Found ${response.results.count} threats`,
+        'success'
+      );
+    } catch (error: any) {
+      console.error('Search endpoint test failed:', error);
+      this.showNotification(
+        `Search endpoint test failed: ${error.message}`,
+        'error'
+      );
+    }
+  }
 
-    DOMBuilder.clearChildren(button);
-
-    const container = DOMBuilder.createElement('div', {
-      className: 'flex items-center space-x-3'
-    });
-
-    const iconContainer = DOMBuilder.createElement('div', {
-      className: 'p-2 bg-purple-500/20 rounded-lg'
-    });
-
-    const spinner = DOMBuilder.createElement('div', {
-      className: 'animate-spin rounded-full h-5 w-5 border-b-2 border-purple-400'
-    });
-
-    iconContainer.appendChild(spinner);
-
-    const textContainer = DOMBuilder.createElement('div');
-    textContainer.appendChild(DOMBuilder.createElement('h3', {
-      className: 'font-medium',
-      textContent: 'Collecting...'
-    }));
-    textContainer.appendChild(DOMBuilder.createElement('p', {
-      className: 'text-sm text-gray-400',
-      textContent: 'This may take a moment'
-    }));
-
-    container.appendChild(iconContainer);
-    container.appendChild(textContainer);
-    button.appendChild(container);
+  private async testEnrichEndpoint(): Promise<void> {
+    try {
+      console.log('Testing enrich endpoint...');
+      // Use a sample IP address for testing
+      const testIP = '8.8.8.8';
+      const response = await enrichIndicator(testIP, 'ipv4');
+      console.log('Enrich endpoint test successful:', response);
+      this.showNotification(
+        `Enrich endpoint working! Enriched ${response.total_processed} indicator(s)`,
+        'success'
+      );
+    } catch (error: any) {
+      console.error('Enrich endpoint test failed:', error);
+      this.showNotification(
+        `Enrich endpoint test failed: ${error.message}`,
+        'error'
+      );
+    }
   }
 
   private updateApiStatus(status: 'connecting' | 'connected' | 'error'): void {
