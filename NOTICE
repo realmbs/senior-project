@@ -1,0 +1,40 @@
+Threat Intelligence Platform
+Copyright (c) 2025 Mark Blaha
+
+This project includes software developed by Mark Blaha and incorporates
+third-party open source software components. The following is a list of
+these components with their respective licenses:
+
+================================================================================
+
+Frontend Dependencies:
+- Vite (MIT License) - https://vitejs.dev/
+- TypeScript (Apache-2.0) - https://www.typescriptlang.org/
+- TailwindCSS (MIT License) - https://tailwindcss.com/
+- Leaflet (BSD-2-Clause) - https://leafletjs.com/
+- Leaflet.heat (BSD-2-Clause) - https://github.com/Leaflet/Leaflet.heat
+- Chart.js (MIT License) - https://www.chartjs.org/
+- Ky (MIT License) - https://github.com/sindresorhus/ky
+- Lucide (ISC License) - https://lucide.dev/
+
+Backend Dependencies:
+- Boto3 (Apache-2.0) - AWS SDK for Python
+- Requests (Apache-2.0) - HTTP library for Python
+- Certifi (MPL-2.0) - SSL certificate verification
+- urllib3 (MIT License) - HTTP client for Python
+
+Infrastructure:
+- Terraform (MPL-2.0) - https://www.terraform.io/
+- AWS Provider for Terraform (MPL-2.0)
+
+Data Sources:
+- AlienVault Open Threat Exchange (OTX) - https://otx.alienvault.com/
+- Abuse.ch URLhaus - https://urlhaus.abuse.ch/
+- Shodan API - https://www.shodan.io/
+
+================================================================================
+
+For the full text of each license, please refer to the respective project
+repositories or the LICENSE files included in the node_modules directory.
+
+This project is distributed under the MIT License. See LICENSE file for details.
